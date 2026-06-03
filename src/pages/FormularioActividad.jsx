@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   AlertCircle,
@@ -18,34 +18,7 @@ import {
   UserCircle,
   X,
 } from "lucide-react";
-
-const empresasMock = [
-  {
-    rut: "76123456-7",
-    razonSocial: "DataLab Consultores SpA",
-    giro: "Servicios de consultoría informática y análisis de datos",
-  },
-  {
-    rut: "77234567-8",
-    razonSocial: "SecureNet Chile Ltda.",
-    giro: "Servicios de seguridad informática",
-  },
-  {
-    rut: "78345678-9",
-    razonSocial: "Logística Sur SpA",
-    giro: "Operaciones logísticas y centros de distribución",
-  },
-  {
-    rut: "79456789-0",
-    razonSocial: "Fundación Verde Futuro",
-    giro: "Programas de sostenibilidad y educación ambiental",
-  },
-  {
-    rut: "76543210-K",
-    razonSocial: "Centro de Desarrollo de Negocios",
-    giro: "Asesoría y acompañamiento a emprendedores",
-  },
-];
+import { fetchCompanyFromSii } from "../services/siiCompany";
 
 const escuelas = [
   "Administración y Negocios",
@@ -187,6 +160,30 @@ function formatRut(value) {
   const cuerpoFormateado = cuerpo.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 
   return `${cuerpoFormateado}-${dv}`;
+}
+
+function calculateRutDv(cuerpo) {
+  let suma = 0;
+  let multiplo = 2;
+
+  for (let index = cuerpo.length - 1; index >= 0; index -= 1) {
+    suma += Number(cuerpo[index]) * multiplo;
+    multiplo = multiplo === 7 ? 2 : multiplo + 1;
+  }
+
+  const resultado = 11 - (suma % 11);
+  if (resultado === 11) return "0";
+  if (resultado === 10) return "K";
+  return String(resultado);
+}
+
+function isValidRut(value) {
+  const cleanRut = normalizeRut(value);
+  if (cleanRut.length < 2) return false;
+
+  const cuerpo = cleanRut.slice(0, -1);
+  const dv = cleanRut.slice(-1);
+  return /^\d+$/.test(cuerpo) && calculateRutDv(cuerpo) === dv;
 }
 
 function FieldLabel({ children, required = false }) {
@@ -380,6 +377,7 @@ export default function FormularioActividad() {
   const [showErrors, setShowErrors] = useState(false);
   const [showReview, setShowReview] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [siiLoading, setSiiLoading] = useState(false);
 
   const isEmpresa = form.tipoSolicitante === "empresa";
 
@@ -426,34 +424,57 @@ export default function FormularioActividad() {
     setStatus(null);
   };
 
-  const handleVerifyRut = () => {
+  const handleVerifyRut = async () => {
     const rut = normalizeRut(form.rutEmpresa);
-    const found = empresasMock.find((empresa) => normalizeRut(empresa.rut) === rut);
 
-    if (!found) {
+    if (!rut) {
       setForm((prev) => ({ ...prev, razonSocial: "", giroEmpresa: "", rutVerificado: false }));
       setStatus({
         type: "error",
-        message: "No se encontró una empresa asociada a este RUT en la base mockup.",
+        message: "Ingresa un RUT de empresa antes de verificar.",
       });
       return;
     }
 
-    setForm((prev) => ({
-      ...prev,
-      rutEmpresa: found.rut,
-      razonSocial: found.razonSocial,
-      giroEmpresa: found.giro,
-      rutVerificado: true,
-      contraparteExterna: found.razonSocial,
-      origen: "Externa",
-      tipo: "Proyecto",
-    }));
+    if (!isValidRut(rut)) {
+      setForm((prev) => ({ ...prev, razonSocial: "", giroEmpresa: "", rutVerificado: false }));
+      setStatus({
+        type: "error",
+        message: "El RUT ingresado no es válido según su dígito verificador.",
+      });
+      return;
+    }
 
-    setStatus({
-      type: "success",
-      message: "Empresa encontrada. La razón social fue completada automáticamente en modo demostración.",
-    });
+    setSiiLoading(true);
+    setStatus({ type: "draft", message: "Consultando datos tributarios públicos..." });
+
+    try {
+      const company = await fetchCompanyFromSii(rut);
+
+      setForm((prev) => ({
+        ...prev,
+        rutEmpresa: company.rut,
+        razonSocial: company.razonSocial,
+        giroEmpresa: company.giroEmpresa || "",
+        rutVerificado: true,
+        contraparteExterna: company.razonSocial,
+        origen: "Externa",
+        tipo: "Proyecto",
+      }));
+
+      setStatus({
+        type: "success",
+        message: `Empresa verificada correctamente desde ${company.fuente || "SII"}.`,
+      });
+    } catch (error) {
+      setForm((prev) => ({ ...prev, razonSocial: "", giroEmpresa: "", rutVerificado: false }));
+      setStatus({
+        type: "error",
+        message: error.message || "No fue posible verificar el RUT en este momento.",
+      });
+    } finally {
+      setSiiLoading(false);
+    }
   };
 
   const handlePreviousActivityChange = (activityId) => {
@@ -582,6 +603,7 @@ export default function FormularioActividad() {
       tipoSolicitante: form.tipoSolicitante,
       rutEmpresa: isEmpresa ? form.rutEmpresa : "",
       razonSocial: isEmpresa ? form.razonSocial : "",
+      giroEmpresa: isEmpresa ? form.giroEmpresa : "",
       nombreActividad: form.nombreActividad,
       escuela: isEmpresa ? "Por asignar por encargado" : form.escuela,
       carrera: isEmpresa ? "Por asignar por encargado" : form.carrera,
@@ -711,7 +733,7 @@ export default function FormularioActividad() {
               title={isEmpresa ? "Identificación de Empresa" : "Información Académica"}
               subtitle={
                 isEmpresa
-                  ? "Verifica el RUT de la empresa para completar automáticamente su razón social en modo mockup."
+                  ? "Verifica el RUT de la empresa para completar automáticamente su razón social con datos tributarios públicos."
                   : "Datos base para relacionar la actividad con una escuela, carrera y sede específica."
               }
             >
@@ -750,10 +772,11 @@ export default function FormularioActividad() {
                     <button
                       type="button"
                       onClick={handleVerifyRut}
-                      className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-neutral-950 px-5 text-sm font-extrabold text-white transition hover:bg-neutral-800"
+                      disabled={siiLoading}
+                      className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-neutral-950 px-5 text-sm font-extrabold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       <SearchCheck className="h-5 w-5 text-[#f5b400]" />
-                      Verificar RUT
+                      {siiLoading ? "Verificando..." : "Verificar RUT"}
                     </button>
                   </div>
 
@@ -774,13 +797,13 @@ export default function FormularioActividad() {
                       readOnly
                       value={form.giroEmpresa}
                       onChange={() => {}}
-                      placeholder="Información simulada del registro"
+                      placeholder="Se completará si la fuente entrega actividad o referencia tributaria"
                     />
                   </div>
 
                   <div className="rounded-2xl border border-[#f5b400]/40 bg-[#fff8df] p-4 text-sm text-neutral-700">
-                    <p className="font-black text-neutral-950">RUT de prueba disponibles</p>
-                    <p className="mt-1">76.123.456-7 · 77.234.567-8 · 78.345.678-9 · 79.456.789-0 · 76.543.210-K</p>
+                    <p className="font-black text-neutral-950">Validación tributaria</p>
+                    <p className="mt-1">Puedes ingresar el RUT con o sin puntos. El sistema valida el dígito verificador y consulta datos públicos antes de permitir el envío.</p>
                   </div>
                 </div>
               ) : (

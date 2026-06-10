@@ -673,6 +673,9 @@ export default function FormularioActividad() {
             <Link to="/formulario" className="rounded-xl bg-[#f5b400] px-4 py-2 text-neutral-950">
               Registro de actividad
             </Link>
+                        <Link to="/dashboard" className="rounded-xl bg-[#f5b400] px-4 py-2 text-neutral-950">
+              Dashboard
+            </Link>
           </nav>
 
           <div className="flex items-center gap-4">

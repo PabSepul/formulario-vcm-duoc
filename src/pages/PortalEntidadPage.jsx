@@ -25,6 +25,10 @@ import {
 
 const relevantStatuses = ["En revisión por EE", "Hito registrado", "En cierre"];
 
+function getPendingMilestone(project) {
+  return (project?.milestones || []).find((milestone) => milestone.status === "En revisión");
+}
+
 export default function PortalEntidadPage() {
   ensureVcmData();
   const [projects, setProjects] = useState(getProjects);
@@ -37,6 +41,7 @@ export default function PortalEntidadPage() {
     [projects],
   );
   const selectedProject = projects.find((project) => project.id === selectedId) || pendingProjects[0];
+  const selectedPendingMilestone = getPendingMilestone(selectedProject);
 
   const refresh = (notice) => {
     setProjects(getProjects());
@@ -80,22 +85,36 @@ export default function PortalEntidadPage() {
   };
 
   const approveMilestone = () => {
+    const milestoneInReview = getPendingMilestone(selectedProject);
+    if (!milestoneInReview) {
+      setMessage({ type: "error", text: "No hay un hito pendiente de validación en esta solicitud." });
+      return;
+    }
+
     mutate(
       (project) => {
         const milestones = (project.milestones || []).map((milestone) =>
-          milestone.status === "En revisión" ? { ...milestone, status: "Aprobado", reviewedAt: new Date().toISOString() } : milestone,
+          milestone.id === milestoneInReview.id
+            ? { ...milestone, status: "Aprobado", reviewedAt: new Date().toISOString(), reviewComment: comment.trim() }
+            : milestone,
         );
         return addNotification(
-          addProjectEvent({ ...project, status: "Hito aprobado", milestones }, "ee", "Hito aprobado", "La Entidad Externa validó el hito registrado."),
+          addProjectEvent({ ...project, status: "Hito aprobado", milestones }, "ee", "Hito aprobado", `La Entidad Externa validó el hito "${milestoneInReview.title}".`),
           "Docente y Encargado VCM",
-          "El hito fue aprobado por la Entidad Externa.",
+          "El hito fue aprobado por la Entidad Externa. El docente puede continuar con el siguiente avance.",
         );
       },
-      { type: "success", text: "Hito aprobado." },
+      { type: "success", text: "Hito aprobado. El docente ya puede continuar con el siguiente hito o cierre." },
     );
   };
 
   const observeMilestone = () => {
+    const milestoneInReview = getPendingMilestone(selectedProject);
+    if (!milestoneInReview) {
+      setMessage({ type: "error", text: "No hay un hito pendiente de validación en esta solicitud." });
+      return;
+    }
+
     if (!comment.trim()) {
       setMessage({ type: "error", text: "Registra observaciones antes de observar el hito." });
       return;
@@ -104,10 +123,10 @@ export default function PortalEntidadPage() {
     mutate(
       (project) => {
         const milestones = (project.milestones || []).map((milestone) =>
-          milestone.status === "En revisión" ? { ...milestone, status: "Observado", observation: comment } : milestone,
+          milestone.id === milestoneInReview.id ? { ...milestone, status: "Observado", observation: comment, reviewedAt: new Date().toISOString() } : milestone,
         );
         return addNotification(
-          addProjectEvent({ ...project, status: "Hito observado", milestones }, "ee", "Hito observado por EE", comment),
+          addProjectEvent({ ...project, status: "Hito observado", milestones }, "ee", "Hito observado por EE", `${milestoneInReview.title}: ${comment}`),
           "Docente",
           "La Entidad Externa registró observaciones sobre el hito.",
         );
@@ -201,6 +220,12 @@ export default function PortalEntidadPage() {
             </Section>
 
             <Section title="Acción de Entidad Externa" subtitle="Elige una resolución según el estado actual.">
+              {selectedProject.status === "Hito registrado" && (
+                <div className="mb-5">
+                  <MilestoneReview milestone={selectedPendingMilestone} />
+                </div>
+              )}
+
               <TextArea
                 label="Observaciones"
                 value={comment}
@@ -217,8 +242,8 @@ export default function PortalEntidadPage() {
                 )}
                 {selectedProject.status === "Hito registrado" && (
                   <>
-                    <ActionButton variant="outline" icon={<MessageSquare className="h-5 w-5" />} onClick={observeMilestone}>Observar hito</ActionButton>
-                    <ActionButton icon={<ClipboardCheck className="h-5 w-5" />} onClick={approveMilestone}>Validar hito</ActionButton>
+                    <ActionButton variant="outline" icon={<MessageSquare className="h-5 w-5" />} onClick={observeMilestone} disabled={!selectedPendingMilestone}>Observar hito</ActionButton>
+                    <ActionButton icon={<ClipboardCheck className="h-5 w-5" />} onClick={approveMilestone} disabled={!selectedPendingMilestone}>Validar hito</ActionButton>
                   </>
                 )}
                 {selectedProject.status === "En cierre" && !selectedProject.closure?.eeApproved && (
@@ -247,8 +272,30 @@ function Info({ label, value }) {
   );
 }
 
+function MilestoneReview({ milestone }) {
+  if (!milestone) {
+    return <Notice type="error">Esta solicitud está marcada con hito registrado, pero no tiene un hito en revisión para validar.</Notice>;
+  }
+
+  return (
+    <div className="rounded-2xl border border-[#f5b400]/40 bg-[#fff8df] p-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-wide text-[#8a6500]">Hito enviado por docente</p>
+          <p className="mt-1 text-lg font-black text-neutral-950">{milestone.title}</p>
+        </div>
+        <StatusBadge status="Hito registrado" />
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Info label="Comentarios del docente" value={milestone.comments} />
+        <Info label="Evidencia enviada" value={milestone.evidence} />
+      </div>
+    </div>
+  );
+}
+
 function lastEvidence(project) {
   if (project.status === "En cierre") return project.closure?.summary || "Solicitud de cierre registrada.";
-  const current = (project.milestones || []).find((milestone) => milestone.status === "En revisión");
+  const current = getPendingMilestone(project);
   return current ? `${current.title}: ${current.evidence}` : "Sin evidencia pendiente.";
 }

@@ -47,6 +47,10 @@ const initialClosure = {
   evidence: "",
 };
 
+function getPendingMilestone(project) {
+  return (project?.milestones || []).find((milestone) => milestone.status === "En revisión");
+}
+
 export default function CatalogoDocentePage() {
   ensureVcmData();
   const session = getSession();
@@ -60,21 +64,27 @@ export default function CatalogoDocentePage() {
   const [message, setMessage] = useState(null);
 
   const teacherProjects = useMemo(
-    () =>
-      projects.filter((project) =>
-        [
-          "Disponible para docentes",
-          "Postulada / Tomada por docente",
-          "En revisión VCM",
-          "Proyecto en ejecución",
-          "Hito observado",
-          "Hito aprobado",
-          "Cierre observado",
-        ].includes(project.status),
-      ),
-    [projects],
+    () => {
+      const visibleStatuses = [
+        "Disponible para docentes",
+        "Postulada / Tomada por docente",
+        "En revisión VCM",
+        "Proyecto en ejecución",
+        "Hito registrado",
+        "Hito observado",
+        "Hito aprobado",
+        "Cierre observado",
+      ];
+
+      return projects.filter((project) => {
+        if (!visibleStatuses.includes(project.status)) return false;
+        if (["vcm", "jc"].includes(session?.role)) return true;
+        return project.status === "Disponible para docentes";
+      });
+    },
+    [projects, session?.role],
   );
-  const selectedProject = projects.find((project) => project.id === selectedId) || teacherProjects[0];
+  const selectedProject = teacherProjects.find((project) => project.id === selectedId) || teacherProjects[0];
 
   const refresh = (notice) => {
     setProjects(getProjects());
@@ -123,7 +133,7 @@ export default function CatalogoDocentePage() {
           "Encargado VCM",
           "Un docente postuló para ejecutar el proyecto.",
         ),
-      { type: "success", text: "Postulación enviada a revisión VCM." },
+      { type: "success", text: "Postulación enviada a revisión VCM. Puedes seguirla en Mis solicitudes." },
     );
     setApplication({ ...initialApplication, teacher: session?.name || "Docente Demo" });
   };
@@ -220,8 +230,8 @@ export default function CatalogoDocentePage() {
     <AppShell active="docente">
       <PageIntro
         eyebrow="Catálogo docente"
-        title="Proyectos VCM disponibles y en ejecución"
-        description="El docente revisa el catálogo, toma un proyecto, registra ejecución, hitos, cierre o cancelación."
+        title="Proyectos VCM disponibles"
+        description="El docente revisa el catálogo y toma proyectos disponibles. Las solicitudes ya tomadas se gestionan en Mis solicitudes."
       />
 
       {message && (
@@ -231,7 +241,7 @@ export default function CatalogoDocentePage() {
       )}
 
       <div className="grid gap-5 xl:grid-cols-[380px_1fr]">
-        <Section title="Proyectos docente" subtitle="Disponibles, en ejecución u observados.">
+        <Section title="Proyectos docente" subtitle="Disponibles para toma docente.">
           <div className="space-y-3">
             {teacherProjects.length === 0 ? (
               <EmptyState title="Sin proyectos" description="No hay proyectos disponibles para docentes en este momento." />
@@ -322,6 +332,18 @@ export default function CatalogoDocentePage() {
                       <ActionButton variant="danger" icon={<XCircle className="h-5 w-5" />} onClick={submitCancellation}>Enviar cancelación</ActionButton>
                     </div>
                   </div>
+                </div>
+              </Section>
+            )}
+
+            {selectedProject.status === "Hito registrado" && (
+              <Section title="Hito enviado a Entidad Externa" subtitle="La contraparte debe validar u observar el hito antes de continuar.">
+                <Notice type="info">El hito quedó pendiente en el Portal EE. Cuando la Entidad Externa lo apruebe, podrás continuar con el siguiente hito o solicitar cierre.</Notice>
+                <div className="mt-5 grid gap-4 md:grid-cols-2">
+                  <Info label="Hito en revisión" value={getPendingMilestone(selectedProject)?.title} />
+                  <Info label="Comentarios enviados" value={getPendingMilestone(selectedProject)?.comments} />
+                  <Info label="Evidencia enviada" value={getPendingMilestone(selectedProject)?.evidence} />
+                  <Info label="Estado" value="Pendiente de validación EE" />
                 </div>
               </Section>
             )}

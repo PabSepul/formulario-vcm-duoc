@@ -108,6 +108,7 @@ export const roleNavigation = {
   jc: fullNavigation,
   ee: [
     { label: "Formulario", to: "/formulario", active: "formulario" },
+    { label: "Portal EE", to: "/portal-entidad", active: "entidad" },
     { label: "Mis solicitudes", to: "/solicitudes-entidad", active: "solicitudes-entidad" },
   ],
   docente: [

@@ -20,6 +20,8 @@ import {
   addProjectEvent,
   ensureVcmData,
   getProjects,
+  getProjectsForSession,
+  getSession,
   updateProject,
 } from "../data/vcmPlatform";
 
@@ -31,16 +33,18 @@ function getPendingMilestone(project) {
 
 export default function PortalEntidadPage() {
   ensureVcmData();
+  const session = getSession();
   const [projects, setProjects] = useState(getProjects);
   const [selectedId, setSelectedId] = useState("");
   const [comment, setComment] = useState("");
   const [message, setMessage] = useState(null);
+  const scopedProjects = useMemo(() => getProjectsForSession(projects, session), [projects, session]);
 
   const pendingProjects = useMemo(
-    () => projects.filter((project) => relevantStatuses.includes(project.status) && !(project.status === "En cierre" && project.closure?.eeApproved)),
-    [projects],
+    () => scopedProjects.filter((project) => relevantStatuses.includes(project.status) && !(project.status === "En cierre" && project.closure?.eeApproved)),
+    [scopedProjects],
   );
-  const selectedProject = projects.find((project) => project.id === selectedId) || pendingProjects[0];
+  const selectedProject = scopedProjects.find((project) => project.id === selectedId) || pendingProjects[0];
   const selectedPendingMilestone = getPendingMilestone(selectedProject);
 
   const refresh = (notice) => {
@@ -60,10 +64,10 @@ export default function PortalEntidadPage() {
       (project) =>
         addNotification(
           addProjectEvent({ ...project, status: "Aprobada por EE", eeApproved: true, observations: "" }, "ee", "V°B° entregado por EE", "La propuesta fue aprobada por la Entidad Externa."),
-          "Encargado VCM",
+          "Validador",
           "La propuesta fue aprobada por la Entidad Externa.",
         ),
-      { type: "success", text: "V°B° registrado. VCM podrá asignar Escuela / Sede / JC." },
+      { type: "success", text: "V°B° registrado. El Validador podrá asignar Escuela / Carrera / Sede / Director." },
     );
   };
 
@@ -77,10 +81,10 @@ export default function PortalEntidadPage() {
       (project) =>
         addNotification(
           addProjectEvent({ ...project, status: "Con observaciones de EE", observations: comment }, "ee", "Observaciones registradas por EE", comment),
-          "Encargado VCM",
+          "Validador",
           "La Entidad Externa registró observaciones sobre la propuesta.",
         ),
-      { type: "warning", text: "Observaciones enviadas a VCM." },
+      { type: "warning", text: "Observaciones enviadas al Validador." },
     );
   };
 
@@ -100,7 +104,7 @@ export default function PortalEntidadPage() {
         );
         return addNotification(
           addProjectEvent({ ...project, status: "Hito aprobado", milestones }, "ee", "Hito aprobado", `La Entidad Externa validó el hito "${milestoneInReview.title}".`),
-          "Docente y Encargado VCM",
+          "Docente y Validador",
           "El hito fue aprobado por la Entidad Externa. El docente puede continuar con el siguiente avance.",
         );
       },
@@ -139,11 +143,11 @@ export default function PortalEntidadPage() {
     mutate(
       (project) =>
         addNotification(
-          addProjectEvent({ ...project, status: "En cierre", closure: { ...(project.closure || {}), eeApproved: true } }, "ee", "Cierre aprobado por EE", "VCM debe validar el término administrativo."),
-          "Encargado VCM",
+          addProjectEvent({ ...project, status: "En cierre", closure: { ...(project.closure || {}), eeApproved: true } }, "ee", "Cierre aprobado por EE", "El Validador debe validar el término administrativo."),
+          "Validador",
           "La Entidad Externa aprobó el cierre del proyecto.",
         ),
-      { type: "success", text: "Cierre aprobado. Queda pendiente validación administrativa VCM." },
+      { type: "success", text: "Cierre aprobado. Queda pendiente validación administrativa del Validador." },
     );
   };
 
@@ -206,7 +210,7 @@ export default function PortalEntidadPage() {
 
         {selectedProject ? (
           <div className="space-y-5">
-            <Section title={selectedProject.title} subtitle="Detalle enviado por VCM o docente.">
+            <Section title={selectedProject.title} subtitle="Detalle enviado por Validador o docente.">
               <div className="mb-5 flex flex-wrap items-center gap-2">
                 <StatusBadge status={selectedProject.status} />
                 <span className="text-sm font-semibold text-neutral-500">{selectedProject.entityName}</span>
@@ -215,6 +219,8 @@ export default function PortalEntidadPage() {
                 <Info label="Necesidad" value={selectedProject.description} />
                 <Info label="Objetivo" value={selectedProject.objective} />
                 <Info label="Resultados esperados" value={selectedProject.expectedResults} />
+                <Info label="Equipos" value={formatTeams(selectedProject)} />
+                <Info label="Modalidad / sede destino" value={formatExecution(selectedProject)} />
                 <Info label="Último hito / cierre" value={lastEvidence(selectedProject)} />
               </div>
             </Section>
@@ -298,4 +304,15 @@ function lastEvidence(project) {
   if (project.status === "En cierre") return project.closure?.summary || "Solicitud de cierre registrada.";
   const current = getPendingMilestone(project);
   return current ? `${current.title}: ${current.evidence}` : "Sin evidencia pendiente.";
+}
+
+function formatTeams(project) {
+  const execution = project.execution || {};
+  if (!execution.teamCount || !execution.peoplePerTeam) return "Pendiente";
+  return `${execution.teamCount} equipo(s) · ${execution.peoplePerTeam} persona(s) por equipo`;
+}
+
+function formatExecution(project) {
+  const execution = project.execution || {};
+  return [execution.modality, execution.targetCampus].filter(Boolean).join(" · ") || "Pendiente";
 }

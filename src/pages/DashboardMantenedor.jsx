@@ -30,9 +30,11 @@ import {
   addNotification,
   addProjectEvent,
   asignaturas,
+  carreras,
   escuelas,
   ensureVcmData,
   getProjects,
+  getProjectsForSession,
   getSession,
   projectStatuses,
   sedes,
@@ -43,6 +45,7 @@ import {
 
 const initialAssignment = {
   school: "",
+  career: "",
   campus: "",
   careerLead: "",
 };
@@ -53,7 +56,7 @@ const initialAcademic = {
   semester: "",
 };
 
-const proposalReviewStatuses = ["Borrador", "En revisión por EE", "Correcciones solicitadas por mantenedor"];
+const proposalReviewStatuses = ["Borrador", "En revisión por EE", "Correcciones solicitadas por Validador"];
 
 function needsMaintainerReview(project) {
   return project && proposalReviewStatuses.includes(project.status) && !project.application && !project.cancellation;
@@ -64,7 +67,8 @@ export default function DashboardMantenedor() {
   const session = getSession();
   const [searchParams] = useSearchParams();
   const [projects, setProjects] = useState(getProjects);
-  const firstPriorityProject = projects.find(needsMaintainerReview) || projects[0];
+  const visibleProjects = useMemo(() => getProjectsForSession(projects, session), [projects, session]);
+  const firstPriorityProject = visibleProjects.find(needsMaintainerReview) || visibleProjects[0];
   const [statusFilter, setStatusFilter] = useState("");
   const [selectedId, setSelectedId] = useState(searchParams.get("proyecto") || firstPriorityProject?.id || "");
   const [assignment, setAssignment] = useState(initialAssignment);
@@ -74,20 +78,20 @@ export default function DashboardMantenedor() {
   const [availabilityCancelReason, setAvailabilityCancelReason] = useState("");
   const [message, setMessage] = useState(null);
 
-  const selectedProject = projects.find((project) => project.id === selectedId) || firstPriorityProject;
+  const selectedProject = visibleProjects.find((project) => project.id === selectedId) || firstPriorityProject;
 
   const filteredProjects = useMemo(() => {
-    const base = statusFilter ? projects.filter((project) => project.status === statusFilter) : projects;
+    const base = statusFilter ? visibleProjects.filter((project) => project.status === statusFilter) : visibleProjects;
     return [...base].sort((left, right) => Number(needsMaintainerReview(right)) - Number(needsMaintainerReview(left)));
-  }, [projects, statusFilter]);
+  }, [visibleProjects, statusFilter]);
 
   const stats = useMemo(() => {
-    const pendingMaintainer = projects.filter(needsMaintainerReview).length;
-    const active = projects.filter((project) => project.status === "Proyecto en ejecución").length;
-    const readyToAssign = projects.filter((project) => ["Aprobada por mantenedor", "Aprobada por EE"].includes(project.status)).length;
-    const finished = projects.filter((project) => project.status === "Finalizado exitosamente" || project.status === "Publicado como proyecto realizado").length;
+    const pendingMaintainer = visibleProjects.filter(needsMaintainerReview).length;
+    const active = visibleProjects.filter((project) => project.status === "Proyecto en ejecución").length;
+    const readyToAssign = visibleProjects.filter((project) => ["Aprobada por Validador", "Aprobada por EE"].includes(project.status)).length;
+    const finished = visibleProjects.filter((project) => project.status === "Finalizado exitosamente" || project.status === "Publicado como proyecto realizado").length;
     return { active, pendingMaintainer, readyToAssign, finished };
-  }, [projects]);
+  }, [visibleProjects]);
 
   const refresh = (notice) => {
     const next = getProjects();
@@ -110,18 +114,18 @@ export default function DashboardMantenedor() {
 
     const decisions = {
       approve: {
-        status: "Aprobada por mantenedor",
-        title: "Propuesta aceptada por mantenedor",
+        status: "Aprobada por Validador",
+        title: "Propuesta aceptada por Validador",
         detail: comment || "La propuesta cumple las condiciones iniciales para continuar el flujo.",
         notification: "Su propuesta fue aceptada para continuar revisión interna.",
         notice: "Propuesta aceptada. Ya puede asignarse internamente.",
         type: "success",
       },
       corrections: {
-        status: "Correcciones solicitadas por mantenedor",
+        status: "Correcciones solicitadas por Validador",
         title: "Correcciones solicitadas",
         detail: comment,
-        notification: "El mantenedor solicitó correcciones sobre la propuesta.",
+        notification: "El Validador solicitó correcciones sobre la propuesta.",
         notice: "Correcciones enviadas a la Entidad Externa.",
         type: "warning",
       },
@@ -129,7 +133,7 @@ export default function DashboardMantenedor() {
         status: "Rechazado",
         title: "Propuesta denegada",
         detail: comment,
-        notification: "La propuesta fue denegada por el mantenedor.",
+        notification: "La propuesta fue denegada por el Validador.",
         notice: "Propuesta denegada.",
         type: "warning",
       },
@@ -149,7 +153,7 @@ export default function DashboardMantenedor() {
                 decision,
                 comment,
                 reviewedAt: new Date().toISOString(),
-                reviewedBy: session?.name || "Mantenedor",
+                reviewedBy: session?.name || "Validador",
               },
             },
             actor,
@@ -165,9 +169,9 @@ export default function DashboardMantenedor() {
   };
 
   const assignInternal = () => {
-    const required = [assignment.school, assignment.campus, assignment.careerLead].every(Boolean);
+    const required = [assignment.school, assignment.career, assignment.campus, assignment.careerLead].every(Boolean);
     if (!required) {
-      setMessage({ type: "error", text: "Completa Escuela, Sede y Jefe de Carrera para asignar la propuesta." });
+      setMessage({ type: "error", text: "Completa Escuela, Carrera, Sede y Director de carrera para asignar la propuesta." });
       return;
     }
 
@@ -177,7 +181,7 @@ export default function DashboardMantenedor() {
           addProjectEvent(
             {
               ...project,
-              status: "Asignada a Escuela / Sede / Jefe de Carrera",
+              status: "Asignada a Escuela / Carrera / Sede / Director de carrera",
               assignment: {
                 ...(project.assignment || {}),
                 ...assignment,
@@ -185,12 +189,12 @@ export default function DashboardMantenedor() {
             },
             "vcm",
             "Propuesta asignada internamente",
-            `${assignment.school} · ${assignment.campus} · ${assignment.careerLead}`,
+            `${assignment.school} · ${assignment.career} · ${assignment.campus} · ${assignment.careerLead}`,
           ),
-          "Jefe de Carrera",
+          "Director de carrera",
           "Tiene una propuesta VCM asignada para revisión académica.",
         ),
-      { type: "success", text: "Propuesta asignada a Escuela / Sede / JC." },
+      { type: "success", text: "Propuesta asignada a Escuela / Carrera / Sede / Director de carrera." },
     );
     setAssignment(initialAssignment);
   };
@@ -237,7 +241,7 @@ export default function DashboardMantenedor() {
         const status = approved ? "Proyecto en ejecución" : "Disponible para docentes";
         const eventTitle = approved ? "Ejecución aprobada" : "Postulación docente rechazada";
         const next = addProjectEvent({ ...project, status }, "vcm", eventTitle, approved ? "El proyecto fue aprobado para ejecución." : rejectionReason);
-        return addNotification(next, approved ? "Entidad Externa y Docente" : "Docente", approved ? "El proyecto fue aprobado para ejecución." : "La postulación fue rechazada por VCM.");
+        return addNotification(next, approved ? "Entidad Externa y Docente" : "Docente", approved ? "El proyecto fue aprobado para ejecución." : "La postulación fue rechazada por el Validador.");
       },
       { type: approved ? "success" : "warning", text: approved ? "Proyecto en ejecución." : "Postulación rechazada y proyecto disponible nuevamente." },
     );
@@ -261,7 +265,7 @@ export default function DashboardMantenedor() {
               cancellation: {
                 reason,
                 cancelledAt: new Date().toISOString(),
-                cancelledBy: session?.name || "Mantenedor",
+                cancelledBy: session?.name || "Validador",
                 source: "Sin toma docente",
               },
             },
@@ -269,7 +273,7 @@ export default function DashboardMantenedor() {
             "Proyecto cancelado sin toma docente",
             reason,
           ),
-          "Entidad Externa, Jefe de Carrera y Encargado VCM",
+          "Entidad Externa, Director de carrera y Validador",
           "El proyecto fue cancelado porque no fue tomado por un docente en el periodo correspondiente.",
         ),
       { type: "warning", text: "Proyecto cancelado por falta de toma docente." },
@@ -281,7 +285,7 @@ export default function DashboardMantenedor() {
     mutateSelected(
       (project) =>
         addNotification(
-          addProjectEvent({ ...project, status: "En revisión por EE" }, "vcm", "Propuesta corregida y reenviada", "VCM incorporó observaciones de EE."),
+          addProjectEvent({ ...project, status: "En revisión por EE" }, "vcm", "Propuesta corregida y reenviada", "El Validador incorporó observaciones de EE."),
           "Entidad Externa",
           "La propuesta corregida está disponible para nueva revisión.",
         ),
@@ -294,7 +298,7 @@ export default function DashboardMantenedor() {
       (project) =>
         addNotification(
           addProjectEvent({ ...project, status: "Finalizado exitosamente" }, "vcm", "Cierre administrativo validado", "El proyecto queda finalizado exitosamente."),
-          "Entidad Externa, Docente y Encargado VCM",
+          "Entidad Externa, Docente y Validador",
           "El proyecto fue finalizado exitosamente.",
         ),
       { type: "success", text: "Proyecto finalizado exitosamente." },
@@ -312,8 +316,8 @@ export default function DashboardMantenedor() {
     mutateSelected(
       (project) =>
         addNotification(
-          addProjectEvent({ ...project, status: "Cancelado" }, "vcm", "Proyecto cancelado", project.cancellation?.reason || "Cancelación aprobada por VCM."),
-          "Entidad Externa, Docente y Encargado VCM",
+          addProjectEvent({ ...project, status: "Cancelado" }, "vcm", "Proyecto cancelado", project.cancellation?.reason || "Cancelación aprobada por el Validador."),
+          "Entidad Externa, Docente y Validador",
           "El proyecto fue cancelado.",
         ),
       { type: "warning", text: "Proyecto cancelado." },
@@ -323,7 +327,7 @@ export default function DashboardMantenedor() {
   return (
     <AppShell active="dashboard">
       <PageIntro
-        eyebrow="Mantenedor VCM"
+        eyebrow={session?.role === "jc" ? "Director de carrera" : "Validador"}
         title="Dashboard de gestión"
         description="Bandeja central para revisar propuestas, estados, asignaciones, postulaciones, hitos, cierre y cancelaciones."
         actions={
@@ -374,7 +378,7 @@ export default function DashboardMantenedor() {
                 >
                   <div className="mb-4 flex flex-wrap items-center gap-2">
                     <StatusBadge status={project.status} />
-                    <RoleBadge role={project.status === "Asignada a Escuela / Sede / Jefe de Carrera" ? "jc" : "vcm"} />
+                    <RoleBadge role={project.status === "Asignada a Escuela / Carrera / Sede / Director de carrera" ? "jc" : "vcm"} />
                   </div>
                   <p className="text-base font-black leading-6 text-neutral-950">{project.title}</p>
                   <p className="mt-2 text-sm font-semibold text-neutral-500">{project.entityName}</p>
@@ -396,6 +400,8 @@ export default function DashboardMantenedor() {
                 <Info label="Objetivo" value={selectedProject.objective} />
                 <Info label="Resultados esperados" value={selectedProject.expectedResults} />
                 <Info label="Asignación académica" value={formatAssignment(selectedProject)} />
+                <Info label="Equipos" value={formatTeams(selectedProject)} />
+                <Info label="Modalidad / sede destino" value={formatExecution(selectedProject)} />
               </div>
             </Section>
 
@@ -481,7 +487,7 @@ function ActionPanel({
     return (
       <Section
         title="Revisión de propuesta"
-        subtitle="Antes de aceptarla, el mantenedor puede aprobar, denegar o solicitar correcciones a la contraparte."
+        subtitle="Antes de aceptarla, el Validador puede aprobar, denegar o solicitar correcciones a la contraparte."
         className="p-6"
         headerClassName="mb-6"
       >
@@ -509,24 +515,25 @@ function ActionPanel({
     );
   }
 
-  if (["Aprobada por mantenedor", "Aprobada por EE"].includes(project.status)) {
+  if (["Aprobada por Validador", "Aprobada por EE"].includes(project.status)) {
     return (
-      <Section title="Asignar Escuela / Sede / Jefe de Carrera" subtitle="La propuesta ya fue aceptada y puede pasar a asignación interna." className="p-6" headerClassName="mb-6">
-        <div className="grid gap-5 md:grid-cols-3">
+      <Section title="Asignar Escuela / Carrera / Sede / Director de carrera" subtitle="La propuesta ya fue aceptada y puede pasar a asignación interna." className="p-6" headerClassName="mb-6">
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
           <SelectField label="Escuela" value={assignment.school} onChange={(value) => setAssignment((prev) => ({ ...prev, school: value }))} options={escuelas} placeholder="Seleccione escuela" required />
+          <SelectField label="Carrera" value={assignment.career} onChange={(value) => setAssignment((prev) => ({ ...prev, career: value }))} options={carreras} placeholder="Seleccione carrera" required />
           <SelectField label="Sede" value={assignment.campus} onChange={(value) => setAssignment((prev) => ({ ...prev, campus: value }))} options={sedes} placeholder="Seleccione sede" required />
-          <TextInput label="Jefe de Carrera" value={assignment.careerLead} onChange={(value) => setAssignment((prev) => ({ ...prev, careerLead: value }))} placeholder="Nombre JC" required />
+          <TextInput label="Director de carrera" value={assignment.careerLead} onChange={(value) => setAssignment((prev) => ({ ...prev, careerLead: value }))} placeholder="Nombre director" required />
         </div>
         <div className="mt-5 flex justify-end">
-          <ActionButton icon={<Send className="h-5 w-5" />} onClick={assignInternal}>Notificar a JC</ActionButton>
+          <ActionButton icon={<Send className="h-5 w-5" />} onClick={assignInternal}>Notificar a Director</ActionButton>
         </div>
       </Section>
     );
   }
 
-  if (project.status === "Asignada a Escuela / Sede / Jefe de Carrera") {
+  if (project.status === "Asignada a Escuela / Carrera / Sede / Director de carrera") {
     return (
-      <Section title="Asignación académica JC" subtitle="RN-05: debe existir asignatura, sección y semestre antes de publicar." className="p-6" headerClassName="mb-6">
+      <Section title="Asignación académica del Director" subtitle="RN-05: debe existir asignatura, sección y semestre antes de publicar." className="p-6" headerClassName="mb-6">
         <div className="grid gap-5 md:grid-cols-3">
           <SelectField label="Asignatura" value={academic.subject} onChange={(value) => setAcademic((prev) => ({ ...prev, subject: value }))} options={asignaturas} placeholder="Seleccione asignatura" required />
           <TextInput label="Sección" value={academic.section} onChange={(value) => setAcademic((prev) => ({ ...prev, section: value }))} placeholder="Ej: 003D" required />
@@ -543,7 +550,7 @@ function ActionPanel({
     return (
       <Section
         title="Disponibilidad docente"
-        subtitle="Si el proyecto no fue tomado dentro del periodo definido, el mantenedor puede cancelarlo."
+        subtitle="Si el proyecto no fue tomado dentro del periodo definido, el Validador puede cancelarlo."
         className="p-6"
         headerClassName="mb-6"
       >
@@ -566,7 +573,7 @@ function ActionPanel({
 
   if (project.status === "En revisión VCM" && project.application) {
     return (
-      <Section title="Revisar postulación docente" subtitle="RN-07: VCM debe aprobar antes de iniciar ejecución." className="p-6" headerClassName="mb-6">
+      <Section title="Revisar postulación docente" subtitle="RN-07: el Validador debe aprobar antes de iniciar ejecución." className="p-6" headerClassName="mb-6">
         <div className="mb-6 grid gap-5 md:grid-cols-3">
           <Info label="Docente" value={project.application.teacher} />
           <Info label="Estudiantes" value={project.application.students} />
@@ -591,7 +598,7 @@ function ActionPanel({
 
   if (project.status === "En cierre" && project.closure?.eeApproved) {
     return (
-      <Section title="Validar cierre administrativo" subtitle="RN-12: solo VCM puede finalizar administrativamente." className="p-6" headerClassName="mb-6">
+      <Section title="Validar cierre administrativo" subtitle="RN-12: solo el Validador puede finalizar administrativamente." className="p-6" headerClassName="mb-6">
         <ActionButton icon={<CheckCircle2 className="h-5 w-5" />} onClick={validateClosure}>Finalizar exitosamente</ActionButton>
       </Section>
     );
@@ -606,7 +613,7 @@ function ActionPanel({
   }
 
   return (
-    <Section title="Sin acción pendiente del mantenedor" subtitle="El estado actual espera acción de otro actor o ya fue resuelto." className="p-6" headerClassName="mb-6">
+    <Section title="Sin acción pendiente" subtitle="El estado actual espera acción de otro actor o ya fue resuelto." className="p-6" headerClassName="mb-6">
       <Notice>Revisa la bitácora y notificaciones para seguimiento.</Notice>
     </Section>
   );
@@ -623,5 +630,16 @@ function Info({ label, value }) {
 
 function formatAssignment(project) {
   const assignment = project.assignment || {};
-  return [assignment.school, assignment.campus, assignment.careerLead, assignment.subject, assignment.section, assignment.semester].filter(Boolean).join(" · ") || "Pendiente";
+  return [assignment.school, assignment.career, assignment.campus, assignment.careerLead, assignment.subject, assignment.section, assignment.semester].filter(Boolean).join(" · ") || "Pendiente";
+}
+
+function formatTeams(project) {
+  const execution = project.execution || {};
+  if (!execution.teamCount || !execution.peoplePerTeam) return "Pendiente";
+  return `${execution.teamCount} equipo(s) · ${execution.peoplePerTeam} persona(s) por equipo`;
+}
+
+function formatExecution(project) {
+  const execution = project.execution || {};
+  return [execution.modality, execution.targetCampus].filter(Boolean).join(" · ") || "Pendiente";
 }

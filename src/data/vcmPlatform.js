@@ -1,7 +1,7 @@
 export const roles = {
   vcm: {
-    label: "Encargado VCM",
-    short: "VCM",
+    label: "Validador",
+    short: "VAL",
     route: "/dashboard",
     description: "Crea propuestas, asigna internamente, aprueba ejecución y gestiona cierre.",
   },
@@ -12,8 +12,8 @@ export const roles = {
     description: "Revisa propuestas, entrega V°B°, valida hitos y revisa cierre.",
   },
   jc: {
-    label: "Jefe de Carrera",
-    short: "JC",
+    label: "Director de carrera",
+    short: "DIR",
     route: "/dashboard",
     description: "Asocia propuesta a asignatura, sección y semestre.",
   },
@@ -36,11 +36,11 @@ export const roleStyles = {
 export const projectStatuses = [
   "Borrador",
   "En revisión por EE",
-  "Correcciones solicitadas por mantenedor",
-  "Aprobada por mantenedor",
+  "Correcciones solicitadas por Validador",
+  "Aprobada por Validador",
   "Con observaciones de EE",
   "Aprobada por EE",
-  "Asignada a Escuela / Sede / Jefe de Carrera",
+  "Asignada a Escuela / Carrera / Sede / Director de carrera",
   "Asignada a asignatura",
   "Disponible para docentes",
   "Postulada / Tomada por docente",
@@ -60,22 +60,22 @@ export const projectStatuses = [
 export const statusMeta = {
   Borrador: { tone: "neutral", description: "Propuesta creada, aún no enviada a la Entidad Externa." },
   "En revisión por EE": { tone: "warning", description: "Propuesta enviada a revisión de la Entidad Externa." },
-  "Correcciones solicitadas por mantenedor": { tone: "danger", description: "El mantenedor solicitó ajustes antes de aceptar la propuesta." },
-  "Aprobada por mantenedor": { tone: "success", description: "El mantenedor aceptó la propuesta para continuar el flujo interno." },
+  "Correcciones solicitadas por Validador": { tone: "danger", description: "El Validador solicitó ajustes antes de aceptar la propuesta." },
+  "Aprobada por Validador": { tone: "success", description: "El Validador aceptó la propuesta para continuar el flujo interno." },
   "Con observaciones de EE": { tone: "danger", description: "La Entidad Externa solicitó ajustes." },
   "Aprobada por EE": { tone: "success", description: "La Entidad Externa entregó V°B°." },
-  "Asignada a Escuela / Sede / Jefe de Carrera": { tone: "info", description: "VCM asignó la propuesta internamente." },
-  "Asignada a asignatura": { tone: "info", description: "JC vinculó asignatura, sección y semestre." },
+  "Asignada a Escuela / Carrera / Sede / Director de carrera": { tone: "info", description: "El Validador asignó la propuesta internamente." },
+  "Asignada a asignatura": { tone: "info", description: "El Director de carrera vinculó asignatura, sección y semestre." },
   "Disponible para docentes": { tone: "success", description: "Visible en catálogo docente." },
   "Postulada / Tomada por docente": { tone: "warning", description: "Un docente tomó el proyecto y registró ejecución inicial." },
-  "En revisión VCM": { tone: "warning", description: "VCM debe revisar una postulación o solicitud." },
+  "En revisión VCM": { tone: "warning", description: "El Validador debe revisar una postulación o solicitud." },
   "Proyecto en ejecución": { tone: "success", description: "Proyecto aprobado para ejecución." },
   "Hito registrado": { tone: "warning", description: "Hito enviado a validación de EE." },
   "Hito observado": { tone: "danger", description: "EE registró observaciones sobre el hito." },
   "Hito aprobado": { tone: "success", description: "EE validó el hito." },
   "En cierre": { tone: "warning", description: "Docente solicitó cierre o EE aprobó resultado final." },
   "Cierre observado": { tone: "danger", description: "EE solicitó evidencias finales adicionales." },
-  "Finalizado exitosamente": { tone: "success", description: "VCM validó cierre administrativo." },
+  "Finalizado exitosamente": { tone: "success", description: "El Validador validó cierre administrativo." },
   "Publicado como proyecto realizado": { tone: "success", description: "Disponible en repositorio de experiencias realizadas." },
   Cancelado: { tone: "danger", description: "Proyecto detenido antes de finalizar." },
   Rechazado: { tone: "danger", description: "Propuesta o postulación rechazada definitivamente." },
@@ -84,18 +84,28 @@ export const statusMeta = {
 export const entityTypes = ["Empresa", "Fundación", "Institución pública", "Comunidad", "ONG", "Otra"];
 export const sedes = ["Alameda", "Antonio Varas", "Concepción", "Maipú", "Plaza Norte", "Puente Alto", "San Bernardo", "San Carlos de Apoquindo", "Valparaíso", "Viña del Mar", "Online"];
 export const escuelas = ["Administración y Negocios", "Comunicación", "Construcción", "Diseño", "Gastronomía", "Informática y Telecomunicaciones", "Ingeniería y Recursos Naturales", "Salud y Bienestar", "Turismo y Hospitalidad"];
+export const carreras = ["Analista Programador", "Ingeniería en Informática", "Administración de Empresas", "Diseño Gráfico", "Gastronomía Internacional", "Técnico en Enfermería", "Turismo y Hotelería"];
 export const asignaturas = ["Proyecto de Integración", "Taller de Vinculación con el Medio", "Innovación Aplicada", "Levantamiento de Requerimientos", "Seminario de Especialidad"];
 export const semestres = ["2026-1", "2026-2", "2027-1"];
+export const modalidades = ["Presencial", "Híbrido", "Online"];
 
 export const demoUsers = [
-  { role: "vcm", email: "vcm@duoc.cl", password: "demo123", name: "Encargada VCM" },
+  { role: "vcm", email: "vcm@duoc.cl", password: "demo123", name: "Validadora Demo" },
   { role: "ee", email: "empresa@demo.cl", password: "demo123", name: "Entidad Externa" },
-  { role: "jc", email: "jc@duoc.cl", password: "demo123", name: "Jefe de Carrera" },
+  {
+    role: "jc",
+    email: "jc@duoc.cl",
+    password: "demo123",
+    name: "Andrés Rojas",
+    school: "Informática y Telecomunicaciones",
+    careers: ["Ingeniería en Informática"],
+    subjects: ["Proyecto de Integración", "Levantamiento de Requerimientos"],
+  },
   { role: "docente", email: "docente@duoc.cl", password: "demo123", name: "Docente Demo" },
 ];
 
 const fullNavigation = [
-  { label: "Mantenedor", to: "/dashboard", active: "dashboard" },
+  { label: "Validador", to: "/dashboard", active: "dashboard" },
   { label: "Formulario", to: "/formulario", active: "formulario" },
   { label: "Portal EE", to: "/portal-entidad", active: "entidad" },
   { label: "Solicitudes EE", to: "/solicitudes-entidad", active: "solicitudes-entidad" },
@@ -103,9 +113,14 @@ const fullNavigation = [
   { label: "Mis solicitudes", to: "/mis-solicitudes-docente", active: "mis-solicitudes-docente" },
 ];
 
+const directorNavigation = [
+  { label: "Dashboard", to: "/dashboard", active: "dashboard" },
+  ...fullNavigation.slice(1),
+];
+
 export const roleNavigation = {
   vcm: fullNavigation,
-  jc: fullNavigation,
+  jc: directorNavigation,
   ee: [
     { label: "Formulario", to: "/formulario", active: "formulario" },
     { label: "Portal EE", to: "/portal-entidad", active: "entidad" },
@@ -149,7 +164,7 @@ const STORAGE_KEYS = {
   version: "vcmDataVersion",
 };
 
-const DATA_VERSION = "vcm-role-access-v1";
+const DATA_VERSION = "vcm-director-scope-v1";
 
 const now = () => new Date().toISOString();
 
@@ -182,6 +197,30 @@ function readCollection(key, fallback) {
 function writeCollection(key, value) {
   if (!canUseStorage()) return;
   window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function normalize(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
+}
+
+export function projectMatchesDirectorScope(project, session) {
+  if (!project || session?.role !== "jc") return true;
+
+  const assignment = project.assignment || {};
+  const schoolMatches = normalize(assignment.school) === normalize(session.school);
+  const careerMatches = (session.careers || [session.career]).filter(Boolean).some((career) => normalize(career) === normalize(assignment.career));
+  const subjectMatches = (session.subjects || []).some((subject) => normalize(subject) === normalize(assignment.subject));
+  const leadMatches = normalize(assignment.careerLead) === normalize(session.name);
+  const createdByMatches = normalize(project.createdBy) === normalize(session.name);
+
+  return createdByMatches || (Boolean(project.assignment) && (leadMatches || (schoolMatches && (careerMatches || subjectMatches))));
+}
+
+export function getProjectsForSession(projects, session) {
+  if (session?.role !== "jc") return projects;
+  return projects.filter((project) => projectMatchesDirectorScope(project, session));
 }
 
 function event(actor, title, detail) {
@@ -223,10 +262,11 @@ const seedProjects = [
     entityName: "ODOOCOOP SPA",
     observations: "",
     eeApproved: true,
-    createdBy: "Encargada VCM",
+    createdBy: "Validadora Demo",
     createdAt: now(),
     assignment: {
       school: "Informática y Telecomunicaciones",
+      career: "Ingeniería en Informática",
       campus: "Maipú",
       careerLead: "María González",
       subject: "Proyecto de Integración",
@@ -234,6 +274,12 @@ const seedProjects = [
       semester: "2026-2",
     },
     application: null,
+    execution: {
+      teamCount: 4,
+      peoplePerTeam: 5,
+      modality: "Híbrido",
+      targetCampus: "Maipú",
+    },
     milestones: [],
     closure: null,
     cancellation: null,
@@ -263,10 +309,16 @@ const seedProjects = [
     entityName: "ODOOCOOP SPA",
     observations: "",
     eeApproved: false,
-    createdBy: "Encargada VCM",
+    createdBy: "Validadora Demo",
     createdAt: now(),
     assignment: null,
     application: null,
+    execution: {
+      teamCount: 3,
+      peoplePerTeam: 4,
+      modality: "Presencial",
+      targetCampus: "Puente Alto",
+    },
     milestones: [],
     closure: null,
     cancellation: null,
@@ -295,10 +347,11 @@ const seedProjects = [
     entityName: "ODOOCOOP SPA",
     observations: "",
     eeApproved: true,
-    createdBy: "Encargada VCM",
+    createdBy: "Validadora Demo",
     createdAt: now(),
     assignment: {
       school: "Informática y Telecomunicaciones",
+      career: "Ingeniería en Informática",
       campus: "Puente Alto",
       careerLead: "Andrés Rojas",
       subject: "Levantamiento de Requerimientos",
@@ -311,6 +364,12 @@ const seedProjects = [
       startDate: "2026-08-10",
       endDate: "2026-11-20",
       milestonesText: "Diagnóstico inicial\nMapa de procesos\nEntrega final",
+    },
+    execution: {
+      teamCount: 6,
+      peoplePerTeam: 4,
+      modality: "Presencial",
+      targetCampus: "Puente Alto",
     },
     milestones: [
       {
@@ -460,10 +519,16 @@ export function createProjectDraft(values, entity, sendToEe = false) {
     entityName: entity.name,
     observations: "",
     eeApproved: false,
-    createdBy: values.createdBy || "Encargado VCM",
+    createdBy: values.createdBy || "Validador",
     createdAt: now(),
     assignment: null,
     application: null,
+    execution: {
+      teamCount: Number(values.teamCount) || 1,
+      peoplePerTeam: Number(values.peoplePerTeam) || 1,
+      modality: values.modality,
+      targetCampus: values.targetCampus,
+    },
     milestones: [],
     closure: null,
     cancellation: null,

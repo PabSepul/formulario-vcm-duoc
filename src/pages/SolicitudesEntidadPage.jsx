@@ -14,13 +14,14 @@ import {
   ensureVcmData,
   getEntities,
   getProjects,
+  getProjectsForSession,
   getSession,
 } from "../data/vcmPlatform";
 
 const trackedStatuses = [
   "En revisión por EE",
-  "Correcciones solicitadas por mantenedor",
-  "Aprobada por mantenedor",
+  "Correcciones solicitadas por Validador",
+  "Aprobada por Validador",
   "Postulada / Tomada por docente",
   "En revisión VCM",
   "Proyecto en ejecución",
@@ -51,11 +52,11 @@ export default function SolicitudesEntidadPage() {
 
   const solicitudes = useMemo(() => {
     const base = ["vcm", "jc"].includes(session?.role)
-      ? projects
+      ? getProjectsForSession(projects, session)
       : projects.filter((project) => entityIds.includes(project.entityId));
 
     return base.filter((project) => project.application || trackedStatuses.includes(project.status));
-  }, [entityIds, projects, session?.role]);
+  }, [entityIds, projects, session]);
 
   const [selectedId, setSelectedId] = useState(solicitudes[0]?.id || "");
   const selectedProject = solicitudes.find((project) => project.id === selectedId) || solicitudes[0];
@@ -106,6 +107,8 @@ export default function SolicitudesEntidadPage() {
                 <Info label="Asignatura" value={selectedProject.assignment?.subject} />
                 <Info label="Sección / semestre" value={[selectedProject.assignment?.section, selectedProject.assignment?.semester].filter(Boolean).join(" · ")} />
                 <Info label="Fechas ejecución" value={formatDates(selectedProject)} />
+                <Info label="Equipos" value={formatTeams(selectedProject)} />
+                <Info label="Modalidad / sede destino" value={formatExecution(selectedProject)} />
                 <Info label="Último hito" value={lastMilestone(selectedProject)} />
               </div>
             </Section>
@@ -147,4 +150,15 @@ function lastMilestone(project) {
   const current = project.milestones?.[0];
   if (!current) return "Sin hitos registrados";
   return `${current.title} · ${current.status}`;
+}
+
+function formatTeams(project) {
+  const execution = project.execution || {};
+  if (!execution.teamCount || !execution.peoplePerTeam) return "Pendiente";
+  return `${execution.teamCount} equipo(s) · ${execution.peoplePerTeam} persona(s) por equipo`;
+}
+
+function formatExecution(project) {
+  const execution = project.execution || {};
+  return [execution.modality, execution.targetCampus].filter(Boolean).join(" · ") || "Pendiente";
 }

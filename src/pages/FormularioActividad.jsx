@@ -23,6 +23,8 @@ import {
   ensureVcmData,
   getEntities,
   getSession,
+  modalidades,
+  sedes,
 } from "../data/vcmPlatform";
 
 const initialForm = {
@@ -31,6 +33,10 @@ const initialForm = {
   description: "",
   objective: "",
   expectedResults: "",
+  teamCount: "1",
+  peoplePerTeam: "1",
+  modality: "",
+  targetCampus: "",
   createdBy: "",
 };
 
@@ -51,7 +57,7 @@ export default function FormularioActividad() {
   const [form, setForm] = useState({
     ...initialForm,
     entityId: session?.role === "ee" && ownEntity ? ownEntity.id : "",
-    createdBy: session?.name || "Encargado VCM",
+    createdBy: session?.name || "Validador",
   });
   const [message, setMessage] = useState(null);
 
@@ -74,11 +80,19 @@ export default function FormularioActividad() {
       ["Descripción de la necesidad", form.description],
       ["Objetivo general", form.objective],
       ["Resultados esperados", form.expectedResults],
+      ["Cantidad de equipos", form.teamCount],
+      ["Personas por equipo", form.peoplePerTeam],
+      ["Modalidad", form.modality],
+      ["Sede destino", form.targetCampus],
     ];
     const missing = required.filter(([, value]) => !String(value || "").trim());
 
     if (missing.length > 0) {
       setMessage({ type: "error", text: `Faltan campos obligatorios: ${missing.map(([label]) => label).join(", ")}.` });
+      return false;
+    }
+    if (Number(form.teamCount) < 1 || Number(form.peoplePerTeam) < 1) {
+      setMessage({ type: "error", text: "La cantidad de equipos y personas por equipo debe ser mínimo 1." });
       return false;
     }
     return true;
@@ -106,7 +120,7 @@ export default function FormularioActividad() {
         actions={
           <Link to="/dashboard" className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-neutral-300 bg-white px-5 text-sm font-extrabold text-neutral-950 transition hover:bg-neutral-100">
             <ArrowLeft className="h-5 w-5" />
-            Volver al mantenedor
+            Volver al dashboard
           </Link>
         }
       />
@@ -158,10 +172,10 @@ export default function FormularioActividad() {
                   placeholder="Ej: Mejora de procesos digitales para entidad externa"
                 />
                 <TextInput
-                  label="Responsable VCM"
+                  label="Validador responsable"
                   value={form.createdBy}
                   onChange={(value) => update("createdBy", value)}
-                  placeholder="Encargado VCM"
+                  placeholder="Validador"
                 />
               </div>
               <TextArea
@@ -188,6 +202,40 @@ export default function FormularioActividad() {
                 onChange={(value) => update("expectedResults", value)}
                 placeholder="Productos, entregables o beneficios esperados."
               />
+              <div className="grid gap-5 md:grid-cols-2">
+                <TextInput
+                  label="Cantidad de equipos"
+                  required
+                  type="number"
+                  value={form.teamCount}
+                  onChange={(value) => update("teamCount", value)}
+                  placeholder="Mínimo 1"
+                />
+                <TextInput
+                  label="Personas por equipo"
+                  required
+                  type="number"
+                  value={form.peoplePerTeam}
+                  onChange={(value) => update("peoplePerTeam", value)}
+                  placeholder="Mínimo 1"
+                />
+                <SelectField
+                  label="Modalidad"
+                  required
+                  value={form.modality}
+                  onChange={(value) => update("modality", value)}
+                  options={modalidades}
+                  placeholder="Seleccione modalidad"
+                />
+                <SelectField
+                  label="Sede destino"
+                  required
+                  value={form.targetCampus}
+                  onChange={(value) => update("targetCampus", value)}
+                  options={sedes}
+                  placeholder="Seleccione sede"
+                />
+              </div>
             </div>
           </Section>
 
@@ -214,6 +262,9 @@ export default function FormularioActividad() {
               <Summary label="Entidad" value={selectedEntity?.name || "Pendiente"} />
               <Summary label="RUT" value={selectedEntity?.rut || "Pendiente"} />
               <Summary label="Título" value={form.title || "Pendiente"} />
+              <Summary label="Equipos" value={`${form.teamCount || "0"} equipo(s) · ${form.peoplePerTeam || "0"} persona(s)`} />
+              <Summary label="Modalidad" value={form.modality || "Pendiente"} />
+              <Summary label="Sede destino" value={form.targetCampus || "Pendiente"} />
               <Summary label="Estado inicial" value="Borrador / En revisión por EE" />
             </div>
           </div>

@@ -24,6 +24,7 @@ import {
   addProjectEvent,
   ensureVcmData,
   getProjects,
+  getProjectsForSession,
   getSession,
   updateProject,
 } from "../data/vcmPlatform";
@@ -54,10 +55,11 @@ export default function MisSolicitudesDocentePage() {
   const [message, setMessage] = useState(null);
 
   const solicitudes = useMemo(() => {
-    const withTeacher = projects.filter((project) => project.application);
+    const sourceProjects = ["vcm", "jc"].includes(session?.role) ? getProjectsForSession(projects, session) : projects;
+    const withTeacher = sourceProjects.filter((project) => project.application);
     if (["vcm", "jc"].includes(session?.role)) return withTeacher;
     return withTeacher.filter((project) => project.application?.teacher === session?.name);
-  }, [projects, session?.name, session?.role]);
+  }, [projects, session]);
 
   const selectedProject = solicitudes.find((project) => project.id === selectedId) || solicitudes[0];
 
@@ -153,10 +155,10 @@ export default function MisSolicitudesDocentePage() {
       (project) =>
         addNotification(
           addProjectEvent({ ...project, status: "En revisión VCM", cancellation: { reason: cancelReason } }, "docente", "Solicitud de cancelación registrada", cancelReason),
-          "Encargado VCM",
+          "Validador",
           "El docente solicitó cancelar el proyecto.",
         ),
-      { type: "warning", text: "Solicitud de cancelación enviada a VCM." },
+      { type: "warning", text: "Solicitud de cancelación enviada al Validador." },
     );
     setCancelReason("");
   };
@@ -218,8 +220,8 @@ export default function MisSolicitudesDocentePage() {
             </Section>
 
             {["Postulada / Tomada por docente", "En revisión VCM"].includes(selectedProject.status) && (
-              <Section title="Postulación en revisión" subtitle="VCM debe aprobar la ejecución antes de registrar hitos.">
-                <Notice type="info">Tu solicitud fue enviada correctamente y está pendiente de revisión del Encargado VCM.</Notice>
+              <Section title="Postulación en revisión" subtitle="El Validador debe aprobar la ejecución antes de registrar hitos.">
+                <Notice type="info">Tu solicitud fue enviada correctamente y está pendiente de revisión del Validador.</Notice>
               </Section>
             )}
 
@@ -287,7 +289,7 @@ export default function MisSolicitudesDocentePage() {
               <Section title="Cierre en revisión" subtitle="El cierre queda pendiente de validación externa o administrativa.">
                 <Notice type="info">
                   {selectedProject.closure?.eeApproved
-                    ? "La Entidad Externa aprobó el cierre. Queda pendiente la validación administrativa de VCM."
+                    ? "La Entidad Externa aprobó el cierre. Queda pendiente la validación administrativa del Validador."
                     : "El cierre fue enviado a Entidad Externa para revisión."}
                 </Notice>
                 <div className="mt-5 grid gap-4 md:grid-cols-2">

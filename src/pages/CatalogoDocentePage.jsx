@@ -24,6 +24,7 @@ import {
   addProjectEvent,
   ensureVcmData,
   getProjects,
+  getProjectsForSession,
   getSession,
   updateProject,
 } from "../data/vcmPlatform";
@@ -76,13 +77,15 @@ export default function CatalogoDocentePage() {
         "Cierre observado",
       ];
 
-      return projects.filter((project) => {
+      const sourceProjects = ["vcm", "jc"].includes(session?.role) ? getProjectsForSession(projects, session) : projects;
+
+      return sourceProjects.filter((project) => {
         if (!visibleStatuses.includes(project.status)) return false;
         if (["vcm", "jc"].includes(session?.role)) return true;
         return project.status === "Disponible para docentes";
       });
     },
-    [projects, session?.role],
+    [projects, session],
   );
   const selectedProject = teacherProjects.find((project) => project.id === selectedId) || teacherProjects[0];
 
@@ -130,10 +133,10 @@ export default function CatalogoDocentePage() {
             "Proyecto tomado por docente",
             `${application.teacher} registró estudiantes, fechas e hitos comprometidos.`,
           ),
-          "Encargado VCM",
+          "Validador",
           "Un docente postuló para ejecutar el proyecto.",
         ),
-      { type: "success", text: "Postulación enviada a revisión VCM. Puedes seguirla en Mis solicitudes." },
+      { type: "success", text: "Postulación enviada a revisión del Validador. Puedes seguirla en Mis solicitudes." },
     );
     setApplication({ ...initialApplication, teacher: session?.name || "Docente Demo" });
   };
@@ -218,10 +221,10 @@ export default function CatalogoDocentePage() {
       (project) =>
         addNotification(
           addProjectEvent({ ...project, status: "En revisión VCM", cancellation: { reason: cancelReason } }, "docente", "Solicitud de cancelación registrada", cancelReason),
-          "Encargado VCM",
+          "Validador",
           "El docente solicitó cancelar el proyecto.",
         ),
-      { type: "warning", text: "Solicitud de cancelación enviada a VCM." },
+      { type: "warning", text: "Solicitud de cancelación enviada al Validador." },
     );
     setCancelReason("");
   };
@@ -281,7 +284,7 @@ export default function CatalogoDocentePage() {
             </Section>
 
             {selectedProject.status === "Disponible para docentes" && (
-              <Section title="Tomar proyecto y postular" subtitle="RN-06: registra estudiantes, fechas e hitos antes de enviar a VCM.">
+              <Section title="Tomar proyecto y postular" subtitle="RN-06: registra estudiantes, fechas e hitos antes de enviar al Validador.">
                 <div className="grid gap-5 md:grid-cols-2">
                   <TextInput label="Docente responsable" required value={application.teacher} onChange={(value) => setApplication((prev) => ({ ...prev, teacher: value }))} placeholder="Nombre docente" />
                   <TextInput label="Estudiantes participantes" required type="number" value={application.students} onChange={(value) => setApplication((prev) => ({ ...prev, students: value }))} placeholder="Ej: 28" />
@@ -298,8 +301,8 @@ export default function CatalogoDocentePage() {
             )}
 
             {selectedProject.status === "En revisión VCM" && (
-              <Section title="Postulación en revisión VCM" subtitle="El mantenedor debe aprobar la ejecución o devolver la solicitud.">
-                <Notice type="info">La postulación fue enviada correctamente y queda pendiente de revisión del Encargado VCM.</Notice>
+              <Section title="Postulación en revisión" subtitle="El Validador debe aprobar la ejecución o devolver la solicitud.">
+                <Notice type="info">La postulación fue enviada correctamente y queda pendiente de revisión del Validador.</Notice>
               </Section>
             )}
 

@@ -47,6 +47,8 @@ export default function FormularioActividad() {
   ensureVcmData();
 
   const session = getSession();
+  const isSocioFormador = session?.role === "ee";
+  const reviewTargetLabel = isSocioFormador ? "Validador" : "Socio formador";
   const [entities] = useState(getEntities);
   const ownEntity = useMemo(
     () => entities.find((entity) => entity.contactEmail?.toLowerCase() === session?.email?.toLowerCase()),
@@ -100,17 +102,21 @@ export default function FormularioActividad() {
     return true;
   };
 
-  const save = (sendToEe) => {
+  const save = (sendToReview) => {
     if (!validate()) return;
 
-    const project = createProjectDraft(form, selectedEntity, sendToEe);
+    const project = createProjectDraft(form, selectedEntity, sendToReview, session?.role);
     setMessage({
       type: "success",
-      text: sendToEe
-        ? "Propuesta enviada a revisión del Socio formador. Se generó notificación para el Socio formador."
+      text: sendToReview
+        ? `Propuesta enviada a revisión del ${reviewTargetLabel}. Se generó notificación para el ${reviewTargetLabel}.`
         : "Propuesta guardada como borrador.",
     });
-    const nextRoute = canAccessRoute(session?.role, "/dashboard") ? `/dashboard?proyecto=${project.id}` : getRoleHome(session?.role);
+    const nextRoute = canAccessRoute(session?.role, "/dashboard")
+      ? `/dashboard?proyecto=${project.id}`
+      : isSocioFormador && sendToReview
+        ? "/solicitudes-entidad"
+        : getRoleHome(session?.role);
     window.setTimeout(() => navigate(nextRoute), 700);
   };
 
@@ -119,7 +125,11 @@ export default function FormularioActividad() {
       <PageIntro
         eyebrow="Registro y validación de propuesta"
         title="Formulario de propuesta VCM"
-        description="Crea una propuesta asociada a un Socio formador. Según las reglas del documento, no puede avanzar sin contraparte y V°B° del Socio formador."
+        description={
+          isSocioFormador
+            ? "Registra una propuesta como Socio formador. Al enviarla, pasa directamente al Validador para decidir si se ejecuta y se asigna académicamente."
+            : "Crea una propuesta asociada a un Socio formador. Si nace desde la institución, no puede avanzar sin contraparte y V°B° del Socio formador."
+        }
         actions={
           canAccessRoute(session?.role, "/dashboard") ? (
             <Link to="/dashboard" className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-neutral-300 bg-white px-5 text-sm font-extrabold text-neutral-950 transition hover:bg-neutral-100">
@@ -177,10 +187,10 @@ export default function FormularioActividad() {
                   placeholder="Ej: Mejora de procesos digitales para socio formador"
                 />
                 <TextInput
-                  label="Validador responsable"
+                  label={isSocioFormador ? "Responsable Socio formador" : "Validador responsable"}
                   value={form.createdBy}
                   onChange={(value) => update("createdBy", value)}
-                  placeholder="Validador"
+                  placeholder={isSocioFormador ? "Nombre contraparte" : "Validador"}
                 />
               </div>
               <TextArea
@@ -249,7 +259,7 @@ export default function FormularioActividad() {
               Guardar borrador
             </ActionButton>
             <ActionButton icon={<Send className="h-5 w-5" />} onClick={() => save(true)}>
-              Enviar a revisión del Socio formador
+              Enviar a revisión del {reviewTargetLabel}
             </ActionButton>
           </div>
         </div>
@@ -270,7 +280,7 @@ export default function FormularioActividad() {
               <Summary label="Equipos" value={`${form.teamCount || "0"} equipo(s) · ${form.peoplePerTeam || "0"} persona(s)`} />
               <Summary label="Modalidad" value={form.modality || "Pendiente"} />
               <Summary label="Sede destino" value={form.targetCampus || "Pendiente"} />
-              <Summary label="Estado inicial" value="Borrador / En revisión por Socio formador" />
+              <Summary label="Estado inicial" value={`Borrador / En revisión por ${reviewTargetLabel}`} />
             </div>
           </div>
 
@@ -281,8 +291,18 @@ export default function FormularioActividad() {
             </div>
             <ul className="space-y-2 text-sm leading-6 text-neutral-600">
               <li>No se crea propuesta sin Socio formador.</li>
-              <li>El envío genera notificación al Socio formador.</li>
-              <li>La asignación académica se bloquea hasta V°B° del Socio formador.</li>
+              {isSocioFormador ? (
+                <>
+                  <li>El envío genera notificación al Validador.</li>
+                  <li>El Validador decide si la propuesta se acepta, se corrige o se rechaza.</li>
+                  <li>Si se acepta, el Validador puede asignarla a escuela, carrera, sede y asignatura.</li>
+                </>
+              ) : (
+                <>
+                  <li>El envío genera notificación al Socio formador.</li>
+                  <li>La asignación académica se bloquea hasta V°B° del Socio formador.</li>
+                </>
+              )}
             </ul>
           </div>
         </aside>

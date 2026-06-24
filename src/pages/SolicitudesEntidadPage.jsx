@@ -3,27 +3,42 @@ import {
   Building2,
   ExternalLink,
   GraduationCap,
+  Send,
 } from "lucide-react";
 import {
+  ActionButton,
   AppShell,
   EmptyState,
+  Notice,
   PageIntro,
   Section,
   SelectField,
   StatusBadge,
+  TextArea,
+  TextInput,
 } from "../components/VcmUI";
 import {
+  addNotification,
+  addProjectEvent,
   ensureVcmData,
   getEntities,
   getProjects,
   getProjectsForSession,
   getSession,
+  modalidades,
+  sedes,
+  updateProject,
 } from "../data/vcmPlatform";
 
 const trackedStatuses = [
+  "En revisión por Validador",
   "En revisión por Socio formador",
   "Correcciones solicitadas por Validador",
   "Aprobada por Validador",
+  "Aprobada por Socio formador",
+  "Asignada a Escuela / Carrera / Sede / Director de carrera",
+  "Asignada a asignatura",
+  "Disponible para docentes",
   "Postulada / Tomada por docente",
   "En revisión VCM",
   "Proyecto en ejecución",
@@ -43,9 +58,10 @@ const SOCIO_FORMADOR_SURVEY_URL = "https://survey.alchemer.com/s3/8848039/Evalua
 export default function SolicitudesEntidadPage() {
   ensureVcmData();
   const session = getSession();
-  const [projects] = useState(getProjects);
+  const [projects, setProjects] = useState(getProjects);
   const [entities] = useState(getEntities);
   const [selectedEntityId, setSelectedEntityId] = useState(() => getEntities()[0]?.id || "");
+  const [message, setMessage] = useState(null);
   const isAdmin = session?.role === "admin";
   const entityOptions = useMemo(() => entities.map((entity) => ({ value: entity.id, label: `${entity.name} · ${entity.rut}` })), [entities]);
 
@@ -76,6 +92,12 @@ export default function SolicitudesEntidadPage() {
         title="Mis solicitudes"
         description="Seguimiento de solicitudes asociadas al Socio formador cuando ya fueron tomadas por un docente o avanzaron de estado."
       />
+
+      {message && (
+        <div className="mb-5">
+          <Notice type={message.type}>{message.text}</Notice>
+        </div>
+      )}
 
       {isAdmin && (
         <div className="mb-5">
@@ -138,6 +160,18 @@ export default function SolicitudesEntidadPage() {
               </div>
             </Section>
 
+            {selectedProject.status === "Correcciones solicitadas por Validador" && (
+              <CorrectionPanel
+                key={selectedProject.id}
+                project={selectedProject}
+                session={session}
+                onProjectUpdated={(notice) => {
+                  setProjects(getProjects());
+                  setMessage(notice);
+                }}
+              />
+            )}
+
             <Section title="Resumen de avance" subtitle="Vista de seguimiento para la contraparte.">
               <div className="grid gap-4 md:grid-cols-3">
                 <Info label="Estado actual" value={selectedProject.status} />
@@ -165,6 +199,179 @@ export default function SolicitudesEntidadPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+function buildCorrectionForm(project) {
+  return {
+    title: project?.title || "",
+    description: project?.description || "",
+    objective: project?.objective || "",
+    expectedResults: project?.expectedResults || "",
+    teamCount: String(project?.execution?.teamCount || "1"),
+    peoplePerTeam: String(project?.execution?.peoplePerTeam || "1"),
+    modality: project?.execution?.modality || "",
+    targetCampus: project?.execution?.targetCampus || "",
+    response: "",
+  };
+}
+
+function CorrectionPanel({ project, session, onProjectUpdated }) {
+  const [correctionForm, setCorrectionForm] = useState(() => buildCorrectionForm(project));
+  const [localMessage, setLocalMessage] = useState(null);
+
+  const updateCorrection = (field, value) => {
+    setCorrectionForm((prev) => ({ ...prev, [field]: value }));
+    setLocalMessage(null);
+  };
+
+  const resendCorrection = () => {
+    const required = [
+      ["Título", correctionForm.title],
+      ["Necesidad", correctionForm.description],
+      ["Objetivo", correctionForm.objective],
+      ["Resultados esperados", correctionForm.expectedResults],
+      ["Cantidad de equipos", correctionForm.teamCount],
+      ["Personas por equipo", correctionForm.peoplePerTeam],
+      ["Modalidad", correctionForm.modality],
+      ["Sede destino", correctionForm.targetCampus],
+    ];
+    const missing = required.filter(([, value]) => !String(value || "").trim());
+    if (missing.length > 0) {
+      setLocalMessage({ type: "error", text: `Faltan campos para reenviar: ${missing.map(([label]) => label).join(", ")}.` });
+      return;
+    }
+    if (Number(correctionForm.teamCount) < 1 || Number(correctionForm.peoplePerTeam) < 1) {
+      setLocalMessage({ type: "error", text: "La cantidad de equipos y personas por equipo debe ser mínimo 1." });
+      return;
+    }
+
+    const actor = session?.role === "admin" ? "admin" : "ee";
+    const actorLabel = session?.role === "admin" ? "Administrador" : "Socio formador";
+    updateProject(project.id, (currentProject) =>
+      addNotification(
+        addProjectEvent(
+          {
+            ...currentProject,
+            title: correctionForm.title,
+            description: correctionForm.description,
+            objective: correctionForm.objective,
+            expectedResults: correctionForm.expectedResults,
+            status: "En revisión por Validador",
+            observations: "",
+            execution: {
+              ...(currentProject.execution || {}),
+              teamCount: Number(correctionForm.teamCount) || 1,
+              peoplePerTeam: Number(correctionForm.peoplePerTeam) || 1,
+              modality: correctionForm.modality,
+              targetCampus: correctionForm.targetCampus,
+            },
+            maintainerReview: {
+              ...(currentProject.maintainerReview || {}),
+              correctionResponse: correctionForm.response,
+              correctionSubmittedAt: new Date().toISOString(),
+              correctionSubmittedBy: session?.name || actorLabel,
+            },
+          },
+          actor,
+          "Correcciones reenviadas",
+          correctionForm.response || `El ${actorLabel} ajustó la propuesta solicitada por el Validador.`,
+        ),
+        "Validador",
+        "El Socio formador reenvió una propuesta corregida para revisión.",
+      ),
+    );
+    onProjectUpdated({ type: "success", text: "Correcciones reenviadas al Validador. La propuesta quedó nuevamente en revisión." });
+  };
+
+  return (
+    <Section title="Corregir propuesta" subtitle="Edita la misma solicitud y reenvíala al Validador para una nueva revisión.">
+      {localMessage && (
+        <div className="mb-5">
+          <Notice type={localMessage.type}>{localMessage.text}</Notice>
+        </div>
+      )}
+      <Notice type="warning">
+        Observación del Validador: {project.observations || project.maintainerReview?.comment || "Sin detalle registrado."}
+      </Notice>
+
+      <div className="mt-5 space-y-5">
+        <TextInput
+          label="Título de la propuesta"
+          required
+          value={correctionForm.title}
+          onChange={(value) => updateCorrection("title", value)}
+          placeholder="Título de la propuesta"
+        />
+        <TextArea
+          label="Descripción de la necesidad"
+          required
+          value={correctionForm.description}
+          onChange={(value) => updateCorrection("description", value)}
+          placeholder="Problema, oportunidad o requerimiento actualizado."
+        />
+        <TextArea
+          label="Objetivo general"
+          required
+          value={correctionForm.objective}
+          onChange={(value) => updateCorrection("objective", value)}
+          placeholder="Propósito principal actualizado."
+        />
+        <TextArea
+          label="Resultados esperados"
+          required
+          value={correctionForm.expectedResults}
+          onChange={(value) => updateCorrection("expectedResults", value)}
+          placeholder="Productos, entregables o beneficios esperados."
+        />
+        <div className="grid gap-5 md:grid-cols-2">
+          <TextInput
+            label="Cantidad de equipos"
+            required
+            type="number"
+            value={correctionForm.teamCount}
+            onChange={(value) => updateCorrection("teamCount", value)}
+            placeholder="Mínimo 1"
+          />
+          <TextInput
+            label="Personas por equipo"
+            required
+            type="number"
+            value={correctionForm.peoplePerTeam}
+            onChange={(value) => updateCorrection("peoplePerTeam", value)}
+            placeholder="Mínimo 1"
+          />
+          <SelectField
+            label="Modalidad"
+            required
+            value={correctionForm.modality}
+            onChange={(value) => updateCorrection("modality", value)}
+            options={modalidades}
+            placeholder="Seleccione modalidad"
+          />
+          <SelectField
+            label="Sede destino"
+            required
+            value={correctionForm.targetCampus}
+            onChange={(value) => updateCorrection("targetCampus", value)}
+            options={sedes}
+            placeholder="Seleccione sede"
+          />
+        </div>
+        <TextArea
+          label="Respuesta al Validador"
+          value={correctionForm.response}
+          onChange={(value) => updateCorrection("response", value)}
+          placeholder="Describe brevemente qué se corrigió."
+          rows={3}
+        />
+        <div className="flex justify-end">
+          <ActionButton icon={<Send className="h-5 w-5" />} onClick={resendCorrection}>
+            Reenviar correcciones
+          </ActionButton>
+        </div>
+      </div>
+    </Section>
   );
 }
 

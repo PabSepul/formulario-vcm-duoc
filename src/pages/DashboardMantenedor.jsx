@@ -56,7 +56,7 @@ const initialAcademic = {
   semester: "",
 };
 
-const proposalReviewStatuses = ["Borrador", "En revisión por Socio formador", "Correcciones solicitadas por Validador"];
+const proposalReviewStatuses = ["Borrador", "En revisión por Validador", "Correcciones solicitadas por Validador"];
 
 function needsMaintainerReview(project) {
   return project && proposalReviewStatuses.includes(project.status) && !project.application && !project.cancellation;

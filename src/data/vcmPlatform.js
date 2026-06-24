@@ -15,7 +15,7 @@ export const roles = {
     label: "Socio formador",
     short: "SF",
     route: "/formulario",
-    description: "Revisa propuestas, entrega V°B°, valida hitos y revisa cierre.",
+    description: "Registra propuestas, valida hitos y revisa cierre del proyecto.",
   },
   jc: {
     label: "Director de carrera",
@@ -42,6 +42,7 @@ export const roleStyles = {
 
 export const projectStatuses = [
   "Borrador",
+  "En revisión por Validador",
   "En revisión por Socio formador",
   "Correcciones solicitadas por Validador",
   "Aprobada por Validador",
@@ -66,6 +67,7 @@ export const projectStatuses = [
 
 export const statusMeta = {
   Borrador: { tone: "neutral", description: "Propuesta creada, aún no enviada al Socio formador." },
+  "En revisión por Validador": { tone: "warning", description: "Propuesta enviada por el Socio formador para evaluación del Validador." },
   "En revisión por Socio formador": { tone: "warning", description: "Propuesta enviada a revisión del Socio formador." },
   "Correcciones solicitadas por Validador": { tone: "danger", description: "El Validador solicitó ajustes antes de aceptar la propuesta." },
   "Aprobada por Validador": { tone: "success", description: "El Validador aceptó la propuesta para continuar el flujo interno." },
@@ -1223,8 +1225,11 @@ export function addNotification(project, to, message) {
   };
 }
 
-export function createProjectDraft(values, entity, sendToEe = false) {
-  const status = sendToEe ? "En revisión por Socio formador" : "Borrador";
+export function createProjectDraft(values, entity, sendToReview = false, senderRole = "vcm") {
+  const submittedBySocio = senderRole === "ee";
+  const status = !sendToReview ? "Borrador" : submittedBySocio ? "En revisión por Validador" : "En revisión por Socio formador";
+  const actor = submittedBySocio ? "ee" : "vcm";
+  const reviewTarget = submittedBySocio ? "Validador" : "Socio formador";
   const project = {
     id: createId("proy"),
     title: values.title,
@@ -1235,7 +1240,7 @@ export function createProjectDraft(values, entity, sendToEe = false) {
     entityId: entity.id,
     entityName: entity.name,
     observations: "",
-    eeApproved: false,
+    eeApproved: submittedBySocio,
     createdBy: values.createdBy || "Validador",
     createdAt: now(),
     assignment: null,
@@ -1250,14 +1255,18 @@ export function createProjectDraft(values, entity, sendToEe = false) {
     closure: null,
     cancellation: null,
     history: [
-      event("vcm", sendToEe ? "Propuesta enviada a revisión del Socio formador" : "Borrador de propuesta creado", sendToEe ? "El Socio formador debe revisar la propuesta." : "La propuesta quedó guardada como borrador."),
+      event(
+        actor,
+        sendToReview ? `Propuesta enviada a revisión del ${reviewTarget}` : "Borrador de propuesta creado",
+        sendToReview ? `El ${reviewTarget} debe revisar la propuesta.` : "La propuesta quedó guardada como borrador.",
+      ),
     ],
-    notifications: sendToEe
+    notifications: sendToReview
       ? [
           {
             id: createId("notif"),
-            to: "Socio formador",
-            message: "Tiene una propuesta VCM pendiente de revisión.",
+            to: reviewTarget,
+            message: `Tiene una propuesta VCM pendiente de revisión del ${reviewTarget}.`,
             date: now(),
             read: false,
           },

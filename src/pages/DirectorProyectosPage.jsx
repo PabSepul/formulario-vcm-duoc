@@ -270,11 +270,20 @@ function buildExportRows(projects) {
 }
 
 function escapeXml(value) {
-  return String(value ?? "")
+  return stripInvalidXmlChars(String(value ?? ""))
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function stripInvalidXmlChars(value) {
+  return Array.from(value)
+    .filter((char) => {
+      const code = char.charCodeAt(0);
+      return code === 9 || code === 10 || code === 13 || code >= 32;
+    })
+    .join("");
 }
 
 function slugify(value) {
@@ -407,7 +416,7 @@ function summarySheetXml(projects, school, filters) {
     .map(([key, value]) => `${key}: ${value}`)
     .join(" | ") || "Sin filtros adicionales";
   const rows = [
-    row(1, [cell("A1", "Reporte VCM por escuela", 1), cell("B1", "", 1), cell("C1", "", 1), cell("D1", "", 1)]),
+    row(1, [cell("A1", "Reporte VCM por escuela", 1)]),
     row(3, [cell("A3", "Escuela", 11), cell("B3", school, 10)]),
     row(4, [cell("A4", "Generado", 11), cell("B4", new Date().toLocaleString("es-CL"), 10)]),
     row(5, [cell("A5", "Filtros", 11), cell("B5", filterText, 10)]),
@@ -451,7 +460,7 @@ function projectsSheetXml(projects, school) {
 
 function dictionarySheetXml() {
   const rows = [
-    row(1, [cell("A1", "Diccionario de lectura", 1), cell("B1", "", 1), cell("C1", "", 1)]),
+    row(1, [cell("A1", "Diccionario de lectura", 1)]),
     row(3, [cell("A3", "Etapa", 2), cell("B3", "Qué significa", 2), cell("C3", "Uso sugerido", 2)]),
     row(4, [cell("A4", "Fase inicial", phaseStyle("Fase inicial")), cell("B4", "Propuesta en revisión, validación o asignación inicial.", 10), cell("C4", getPhaseRecommendation("Fase inicial"), 10)]),
     row(5, [cell("A5", "Disponible", phaseStyle("Disponible")), cell("B5", "Proyecto publicado para toma docente.", 10), cell("C5", getPhaseRecommendation("Disponible"), 10)]),
@@ -483,13 +492,15 @@ function worksheetXml({ cols, rows, mergeCells = [], autoFilter, freezePane = fa
   const paneXml = freezePane ? '<sheetViews><sheetView workbookViewId="0"><pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' : "";
   const mergeXml = mergeCells.length ? `<mergeCells count="${mergeCells.length}">${mergeCells.map((ref) => `<mergeCell ref="${ref}"/>`).join("")}</mergeCells>` : "";
   const filterXml = autoFilter ? `<autoFilter ref="${autoFilter}"/>` : "";
+  const dimension = inferDimension(rows);
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="${dimension}"/>
   ${paneXml}
   <cols>${colsXml}</cols>
   <sheetData>${rows.join("")}</sheetData>
-  ${mergeXml}
   ${filterXml}
+  ${mergeXml}
 </worksheet>`;
 }
 
@@ -498,7 +509,9 @@ function row(index, cells) {
 }
 
 function cell(reference, value, style = 0) {
-  return `<c r="${reference}" s="${style}" t="inlineStr"><is><t>${escapeXml(value)}</t></is></c>`;
+  const text = escapeXml(value);
+  const preserveSpace = /^\s|\s$|\n|\r/.test(String(value ?? "")) ? ' xml:space="preserve"' : "";
+  return `<c r="${reference}" s="${style}" t="inlineStr"><is><t${preserveSpace}>${text}</t></is></c>`;
 }
 
 function numberCell(reference, value, style = 0) {
@@ -514,6 +527,27 @@ function columnName(index) {
     current = Math.floor((current - 1) / 26);
   }
   return name;
+}
+
+function inferDimension(rows) {
+  const references = rows.join("").match(/<c r="([A-Z]+[0-9]+)"/g) || [];
+  const cells = references.map((match) => match.replace('<c r="', "").replace('"', ""));
+  if (!cells.length) return "A1";
+
+  let maxColumn = 1;
+  let maxRow = 1;
+  for (const reference of cells) {
+    const [, column, rowNumber] = reference.match(/^([A-Z]+)(\d+)$/) || [];
+    if (!column || !rowNumber) continue;
+    maxColumn = Math.max(maxColumn, columnIndex(column));
+    maxRow = Math.max(maxRow, Number(rowNumber));
+  }
+
+  return `A1:${columnName(maxColumn)}${maxRow}`;
+}
+
+function columnIndex(name) {
+  return name.split("").reduce((total, letter) => total * 26 + letter.charCodeAt(0) - 64, 0);
 }
 
 function createZipBase64(files) {

@@ -5,12 +5,14 @@ import {
   Building2,
   GraduationCap,
   ShieldCheck,
+  UserCog,
   UserRoundCheck,
 } from "lucide-react";
 import { AuthShell, ActionButton, Notice, RoleBadge, TextInput } from "../components/VcmUI";
 import { demoUsers, ensureVcmData, roles, setSession } from "../data/vcmPlatform";
 
 const roleIcons = {
+  admin: <UserCog className="h-6 w-6" />,
   vcm: <ShieldCheck className="h-6 w-6" />,
   ee: <Building2 className="h-6 w-6" />,
   jc: <GraduationCap className="h-6 w-6" />,
@@ -19,8 +21,8 @@ const roleIcons = {
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const [selectedRole, setSelectedRole] = useState("vcm");
-  const [email, setEmail] = useState("vcm@duoc.cl");
+  const [selectedRole, setSelectedRole] = useState("admin");
+  const [email, setEmail] = useState("admin@duoc.cl");
   const [password, setPassword] = useState("demo123");
   const [error, setError] = useState("");
 
@@ -48,6 +50,10 @@ export default function LoginPage() {
       role: user.role,
       email: user.email,
       name: user.name,
+      school: user.school,
+      career: user.career,
+      careers: user.careers,
+      subjects: user.subjects,
       loggedAt: new Date().toISOString(),
     });
     navigate(roles[user.role].route);
@@ -99,7 +105,7 @@ export default function LoginPage() {
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <Link to="/registro" className="text-sm font-extrabold text-neutral-700 underline decoration-[#f5b400] decoration-2 underline-offset-4">
-              Registrar Entidad Externa
+              Registrar Socio formador
             </Link>
             <ActionButton type="submit" icon={<ArrowRight className="h-5 w-5" />}>
               Entrar

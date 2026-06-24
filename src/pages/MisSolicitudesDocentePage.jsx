@@ -15,6 +15,7 @@ import {
   Notice,
   PageIntro,
   Section,
+  SelectField,
   StatusBadge,
   TextArea,
   TextInput,
@@ -48,18 +49,28 @@ export default function MisSolicitudesDocentePage() {
   ensureVcmData();
   const session = getSession();
   const [projects, setProjects] = useState(getProjects);
+  const [selectedTeacher, setSelectedTeacher] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [milestone, setMilestone] = useState(initialMilestone);
   const [closure, setClosure] = useState(initialClosure);
   const [cancelReason, setCancelReason] = useState("");
   const [message, setMessage] = useState(null);
+  const isAdmin = session?.role === "admin";
+
+  const teacherOptions = useMemo(() => {
+    const teachers = projects
+      .map((project) => project.application?.teacher)
+      .filter(Boolean);
+    return [...new Set(teachers)].map((teacher) => ({ value: teacher, label: teacher }));
+  }, [projects]);
 
   const solicitudes = useMemo(() => {
-    const sourceProjects = ["vcm", "jc"].includes(session?.role) ? getProjectsForSession(projects, session) : projects;
+    const sourceProjects = ["admin", "jc"].includes(session?.role) ? getProjectsForSession(projects, session) : projects;
     const withTeacher = sourceProjects.filter((project) => project.application);
-    if (["vcm", "jc"].includes(session?.role)) return withTeacher;
+    if (isAdmin) return selectedTeacher ? withTeacher.filter((project) => project.application?.teacher === selectedTeacher) : withTeacher;
+    if (session?.role === "jc") return withTeacher;
     return withTeacher.filter((project) => project.application?.teacher === session?.name);
-  }, [projects, session]);
+  }, [isAdmin, projects, selectedTeacher, session]);
 
   const selectedProject = solicitudes.find((project) => project.id === selectedId) || solicitudes[0];
 
@@ -103,11 +114,11 @@ export default function MisSolicitudesDocentePage() {
             "Hito registrado",
             `${milestone.title}: ${milestone.comments}`,
           ),
-          "Entidad Externa",
+          "Socio formador",
           "Hay un hito pendiente de validación.",
         );
       },
-      { type: "success", text: "Hito enviado a validación de EE." },
+      { type: "success", text: "Hito enviado a validación del Socio formador." },
     );
     setMilestone(initialMilestone);
   };
@@ -137,10 +148,10 @@ export default function MisSolicitudesDocentePage() {
       (project) =>
         addNotification(
           addProjectEvent({ ...project, status: "En cierre", closure: { ...closure, eeApproved: false } }, "docente", "Solicitud de cierre registrada", closure.summary),
-          "Entidad Externa",
+          "Socio formador",
           "El docente solicitó el cierre del proyecto.",
         ),
-      { type: "success", text: "Cierre enviado a revisión de Entidad Externa." },
+      { type: "success", text: "Cierre enviado a revisión del Socio formador." },
     );
     setClosure(initialClosure);
   };
@@ -166,14 +177,31 @@ export default function MisSolicitudesDocentePage() {
   return (
     <AppShell active="mis-solicitudes-docente">
       <PageIntro
-        eyebrow="Docente"
+        eyebrow={isAdmin ? "Administrador" : "Docente"}
         title="Mis solicitudes tomadas"
-        description="Seguimiento y gestión directa de los proyectos tomados por el docente."
+        description={isAdmin ? "Vista administrativa para revisar solicitudes tomadas como un docente específico." : "Seguimiento y gestión directa de los proyectos tomados por el docente."}
       />
 
       {message && (
         <div className="mb-5">
           <Notice type={message.type}>{message.text}</Notice>
+        </div>
+      )}
+
+      {isAdmin && (
+        <div className="mb-5">
+          <Section title="Vista como docente" subtitle="Selecciona el docente para revisar o corregir sus solicitudes tomadas.">
+            <SelectField
+              label="Docente"
+              value={selectedTeacher}
+              onChange={(value) => {
+                setSelectedTeacher(value);
+                setSelectedId("");
+              }}
+              options={teacherOptions}
+              placeholder="Todos los docentes"
+            />
+          </Section>
         </div>
       )}
 
@@ -232,7 +260,7 @@ export default function MisSolicitudesDocentePage() {
                   <TextArea label="Comentarios de avance" required value={milestone.comments} onChange={(value) => setMilestone((prev) => ({ ...prev, comments: value }))} placeholder="Reuniones, avance, acuerdos o antecedentes relevantes." />
                   <TextArea label="Evidencias" required value={milestone.evidence} onChange={(value) => setMilestone((prev) => ({ ...prev, evidence: value }))} placeholder="Archivos, enlaces, actas, fotografías o documentos." />
                   <div className="flex justify-end">
-                    <ActionButton icon={<FileUp className="h-5 w-5" />} onClick={sendMilestone}>Enviar hito a EE</ActionButton>
+                    <ActionButton icon={<FileUp className="h-5 w-5" />} onClick={sendMilestone}>Enviar hito al Socio formador</ActionButton>
                   </div>
                 </div>
 
@@ -259,20 +287,20 @@ export default function MisSolicitudesDocentePage() {
             )}
 
             {selectedProject.status === "Hito registrado" && (
-              <Section title="Hito enviado a Entidad Externa" subtitle="La contraparte debe validar u observar el hito antes de continuar.">
-                <Notice type="info">El hito está pendiente en el Portal EE. Cuando sea aprobado podrás continuar con el siguiente hito o solicitar cierre.</Notice>
+              <Section title="Hito enviado al Socio formador" subtitle="La contraparte debe validar u observar el hito antes de continuar.">
+                <Notice type="info">El hito está pendiente en el Portal socio formador. Cuando sea aprobado podrás continuar con el siguiente hito o solicitar cierre.</Notice>
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
                   <Info label="Hito en revisión" value={getPendingMilestone(selectedProject)?.title} />
                   <Info label="Comentarios enviados" value={getPendingMilestone(selectedProject)?.comments} />
                   <Info label="Evidencia enviada" value={getPendingMilestone(selectedProject)?.evidence} />
-                  <Info label="Estado" value="Pendiente de validación EE" />
+                  <Info label="Estado" value="Pendiente de validación del Socio formador" />
                 </div>
               </Section>
             )}
 
             {selectedProject.status === "Hito observado" && (
-              <Section title="Hito observado" subtitle="Revisa observaciones de EE, complementa información y vuelve a registrar el hito.">
-                <Notice type="warning">La Entidad Externa registró observaciones sobre un hito. Corrige evidencias y reenvía desde esta misma solicitud.</Notice>
+              <Section title="Hito observado" subtitle="Revisa observaciones del Socio formador, complementa información y vuelve a registrar el hito.">
+                <Notice type="warning">El Socio formador registró observaciones sobre un hito. Corrige evidencias y reenvía desde esta misma solicitud.</Notice>
                 <div className="mt-5">
                   <ActionButton icon={<Send className="h-5 w-5" />} onClick={correctObservedMilestone}>Corregir hito</ActionButton>
                 </div>
@@ -289,8 +317,8 @@ export default function MisSolicitudesDocentePage() {
               <Section title="Cierre en revisión" subtitle="El cierre queda pendiente de validación externa o administrativa.">
                 <Notice type="info">
                   {selectedProject.closure?.eeApproved
-                    ? "La Entidad Externa aprobó el cierre. Queda pendiente la validación administrativa del Validador."
-                    : "El cierre fue enviado a Entidad Externa para revisión."}
+                    ? "El Socio formador aprobó el cierre. Queda pendiente la validación administrativa del Validador."
+                    : "El cierre fue enviado al Socio formador para revisión."}
                 </Notice>
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
                   <Info label="Resumen final" value={selectedProject.closure?.summary} />

@@ -81,7 +81,7 @@ export function AuthShell({ children }) {
             <span>UC</span>
           </div>
           <p className="mt-8 text-sm font-bold uppercase tracking-[0.2em] text-[#f5b400]">Plataforma VCM</p>
-          <h1 className="mt-3 text-4xl font-black tracking-tight">Gestión de proyectos con Entidad Externa</h1>
+          <h1 className="mt-3 text-4xl font-black tracking-tight">Gestión de proyectos con Socio formador</h1>
           <p className="mt-4 max-w-xl text-base leading-7 text-neutral-300">
             Acceso por rol para registrar propuestas, validar con contraparte, asignar académicamente, ejecutar hitos y cerrar proyectos.
           </p>

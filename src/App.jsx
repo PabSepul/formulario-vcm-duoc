@@ -8,6 +8,7 @@ import PortalEntidadPage from "./pages/PortalEntidadPage";
 import CatalogoDocentePage from "./pages/CatalogoDocentePage";
 import SolicitudesEntidadPage from "./pages/SolicitudesEntidadPage";
 import MisSolicitudesDocentePage from "./pages/MisSolicitudesDocentePage";
+import DirectorProyectosPage from "./pages/DirectorProyectosPage";
 
 function ProtectedRoute({ path, children }) {
   const session = getSession();
@@ -26,6 +27,7 @@ export default function App() {
       <Route path="/registro" element={<RegistroEntidadPage />} />
       <Route path="/formulario" element={<ProtectedRoute path="/formulario"><FormularioActividad /></ProtectedRoute>} />
       <Route path="/dashboard" element={<ProtectedRoute path="/dashboard"><DashboardMantenedor /></ProtectedRoute>} />
+      <Route path="/director-proyectos" element={<ProtectedRoute path="/director-proyectos"><DirectorProyectosPage /></ProtectedRoute>} />
       <Route path="/portal-entidad" element={<ProtectedRoute path="/portal-entidad"><PortalEntidadPage /></ProtectedRoute>} />
       <Route path="/solicitudes-entidad" element={<ProtectedRoute path="/solicitudes-entidad"><SolicitudesEntidadPage /></ProtectedRoute>} />
       <Route path="/catalogo-docente" element={<ProtectedRoute path="/catalogo-docente"><CatalogoDocentePage /></ProtectedRoute>} />

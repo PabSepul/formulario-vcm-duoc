@@ -75,7 +75,7 @@ export default function RegistroEntidadPage() {
         address: prev.address || company.giroEmpresa || "",
         verified: true,
       }));
-      setMessage({ type: "success", text: `Entidad verificada desde ${company.fuente || "SII"}.` });
+      setMessage({ type: "success", text: `Socio formador verificado desde ${company.fuente || "SII"}.` });
     } catch (error) {
       setMessage({ type: "error", text: error.message || "No fue posible verificar el RUT." });
     } finally {
@@ -86,9 +86,9 @@ export default function RegistroEntidadPage() {
   const submit = (event) => {
     event.preventDefault();
     const required = [
-      ["Nombre de la entidad", entity.name],
+      ["Nombre del socio formador", entity.name],
       ["RUT o identificador", entity.rut],
-      ["Tipo de entidad", entity.type],
+      ["Tipo de socio formador", entity.type],
       ["Nombre de contacto", entity.contactName],
       ["Correo de contacto", entity.contactEmail],
     ];
@@ -100,7 +100,7 @@ export default function RegistroEntidadPage() {
     }
 
     saveEntity(entity);
-    setMessage({ type: "success", text: "Entidad registrada correctamente. Ya puede asociarse a propuestas VCM." });
+    setMessage({ type: "success", text: "Socio formador registrado correctamente. Ya puede asociarse a propuestas VCM." });
     window.setTimeout(() => navigate("/login"), 700);
   };
 
@@ -118,7 +118,7 @@ export default function RegistroEntidadPage() {
           </div>
           <div>
             <p className="text-sm font-black uppercase tracking-[0.18em] text-[#b68400]">Registro de contraparte</p>
-            <h2 className="mt-1 text-3xl font-black tracking-tight text-neutral-950">Entidad Externa</h2>
+            <h2 className="mt-1 text-3xl font-black tracking-tight text-neutral-950">Socio formador</h2>
             <p className="mt-2 text-sm leading-6 text-neutral-500">
               Campos mínimos según el documento: identificación, tipo, contacto y ubicación.
             </p>
@@ -140,10 +140,10 @@ export default function RegistroEntidadPage() {
           </div>
 
           <div className="grid gap-5 md:grid-cols-2">
-            <TextInput label="Nombre de la entidad" required value={entity.name} onChange={(value) => update("name", value)} placeholder="Nombre formal" />
-            <SelectField label="Tipo de entidad" required value={entity.type} onChange={(value) => update("type", value)} options={entityTypes} placeholder="Seleccione tipo" />
+            <TextInput label="Nombre del socio formador" required value={entity.name} onChange={(value) => update("name", value)} placeholder="Nombre formal" />
+            <SelectField label="Tipo de socio formador" required value={entity.type} onChange={(value) => update("type", value)} options={entityTypes} placeholder="Seleccione tipo" />
             <TextInput label="Nombre de contacto" required value={entity.contactName} onChange={(value) => update("contactName", value)} placeholder="Persona responsable" />
-            <TextInput label="Correo de contacto" required type="email" value={entity.contactEmail} onChange={(value) => update("contactEmail", value)} placeholder="contacto@entidad.cl" />
+            <TextInput label="Correo de contacto" required type="email" value={entity.contactEmail} onChange={(value) => update("contactEmail", value)} placeholder="contacto@socio.cl" />
             <TextInput label="Teléfono de contacto" value={entity.phone} onChange={(value) => update("phone", value)} placeholder="+56 9 0000 0000" />
             <TextInput label="Dirección / comuna / región" value={entity.address} onChange={(value) => update("address", value)} placeholder="Dirección institucional" />
             <TextInput label="Comuna" value={entity.city} onChange={(value) => update("city", value)} placeholder="Comuna" />

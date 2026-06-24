@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import {
   CheckCircle2,
   ClipboardCheck,
+  ExternalLink,
   MessageSquare,
   Send,
 } from "lucide-react";
@@ -12,6 +13,7 @@ import {
   Notice,
   PageIntro,
   Section,
+  SelectField,
   StatusBadge,
   TextArea,
 } from "../components/VcmUI";
@@ -19,13 +21,15 @@ import {
   addNotification,
   addProjectEvent,
   ensureVcmData,
+  getEntities,
   getProjects,
   getProjectsForSession,
   getSession,
   updateProject,
 } from "../data/vcmPlatform";
 
-const relevantStatuses = ["En revisión por EE", "Hito registrado", "En cierre"];
+const relevantStatuses = ["En revisión por Socio formador", "Hito registrado", "En cierre"];
+const SOCIO_FORMADOR_SURVEY_URL = "https://survey.alchemer.com/s3/8848039/Evaluaci-n-de-actividades-extracurricular-Socio-Formador";
 
 function getPendingMilestone(project) {
   return (project?.milestones || []).find((milestone) => milestone.status === "En revisión");
@@ -35,10 +39,27 @@ export default function PortalEntidadPage() {
   ensureVcmData();
   const session = getSession();
   const [projects, setProjects] = useState(getProjects);
+  const [entities] = useState(getEntities);
+  const [selectedEntityId, setSelectedEntityId] = useState(() => getEntities()[0]?.id || "");
   const [selectedId, setSelectedId] = useState("");
   const [comment, setComment] = useState("");
   const [message, setMessage] = useState(null);
-  const scopedProjects = useMemo(() => getProjectsForSession(projects, session), [projects, session]);
+  const isAdmin = session?.role === "admin";
+  const entityOptions = useMemo(() => entities.map((entity) => ({ value: entity.id, label: `${entity.name} · ${entity.rut}` })), [entities]);
+  const ownedEntityIds = useMemo(
+    () =>
+      entities
+        .filter((entity) => entity.contactEmail?.toLowerCase() === session?.email?.toLowerCase())
+        .map((entity) => entity.id),
+    [entities, session?.email],
+  );
+
+  const scopedProjects = useMemo(() => {
+    const base = getProjectsForSession(projects, session);
+    if (isAdmin) return selectedEntityId ? base.filter((project) => project.entityId === selectedEntityId) : base;
+    if (session?.role === "ee") return base.filter((project) => ownedEntityIds.includes(project.entityId));
+    return base;
+  }, [isAdmin, ownedEntityIds, projects, selectedEntityId, session]);
 
   const pendingProjects = useMemo(
     () => scopedProjects.filter((project) => relevantStatuses.includes(project.status) && !(project.status === "En cierre" && project.closure?.eeApproved)),
@@ -55,6 +76,7 @@ export default function PortalEntidadPage() {
 
   const mutate = (updater, notice) => {
     if (!selectedProject) return;
+    setSelectedId(selectedProject.id);
     updateProject(selectedProject.id, updater);
     refresh(notice);
   };
@@ -63,9 +85,9 @@ export default function PortalEntidadPage() {
     mutate(
       (project) =>
         addNotification(
-          addProjectEvent({ ...project, status: "Aprobada por EE", eeApproved: true, observations: "" }, "ee", "V°B° entregado por EE", "La propuesta fue aprobada por la Entidad Externa."),
+          addProjectEvent({ ...project, status: "Aprobada por Socio formador", eeApproved: true, observations: "" }, "ee", "V°B° entregado por Socio formador", "La propuesta fue aprobada por el Socio formador."),
           "Validador",
-          "La propuesta fue aprobada por la Entidad Externa.",
+          "La propuesta fue aprobada por el Socio formador.",
         ),
       { type: "success", text: "V°B° registrado. El Validador podrá asignar Escuela / Carrera / Sede / Director." },
     );
@@ -80,9 +102,9 @@ export default function PortalEntidadPage() {
     mutate(
       (project) =>
         addNotification(
-          addProjectEvent({ ...project, status: "Con observaciones de EE", observations: comment }, "ee", "Observaciones registradas por EE", comment),
+          addProjectEvent({ ...project, status: "Con observaciones de Socio formador", observations: comment }, "ee", "Observaciones registradas por Socio formador", comment),
           "Validador",
-          "La Entidad Externa registró observaciones sobre la propuesta.",
+          "El Socio formador registró observaciones sobre la propuesta.",
         ),
       { type: "warning", text: "Observaciones enviadas al Validador." },
     );
@@ -103,9 +125,9 @@ export default function PortalEntidadPage() {
             : milestone,
         );
         return addNotification(
-          addProjectEvent({ ...project, status: "Hito aprobado", milestones }, "ee", "Hito aprobado", `La Entidad Externa validó el hito "${milestoneInReview.title}".`),
+          addProjectEvent({ ...project, status: "Hito aprobado", milestones }, "ee", "Hito aprobado", `El Socio formador validó el hito "${milestoneInReview.title}".`),
           "Docente y Validador",
-          "El hito fue aprobado por la Entidad Externa. El docente puede continuar con el siguiente avance.",
+          "El hito fue aprobado por el Socio formador. El docente puede continuar con el siguiente avance.",
         );
       },
       { type: "success", text: "Hito aprobado. El docente ya puede continuar con el siguiente hito o cierre." },
@@ -130,9 +152,9 @@ export default function PortalEntidadPage() {
           milestone.id === milestoneInReview.id ? { ...milestone, status: "Observado", observation: comment, reviewedAt: new Date().toISOString() } : milestone,
         );
         return addNotification(
-          addProjectEvent({ ...project, status: "Hito observado", milestones }, "ee", "Hito observado por EE", `${milestoneInReview.title}: ${comment}`),
+          addProjectEvent({ ...project, status: "Hito observado", milestones }, "ee", "Hito observado por Socio formador", `${milestoneInReview.title}: ${comment}`),
           "Docente",
-          "La Entidad Externa registró observaciones sobre el hito.",
+          "El Socio formador registró observaciones sobre el hito.",
         );
       },
       { type: "warning", text: "Observación de hito enviada al docente." },
@@ -143,11 +165,11 @@ export default function PortalEntidadPage() {
     mutate(
       (project) =>
         addNotification(
-          addProjectEvent({ ...project, status: "En cierre", closure: { ...(project.closure || {}), eeApproved: true } }, "ee", "Cierre aprobado por EE", "El Validador debe validar el término administrativo."),
+          addProjectEvent({ ...project, status: "En cierre", closure: { ...(project.closure || {}), eeApproved: true } }, "ee", "Cierre aprobado por Socio formador", "El Validador debe validar el término administrativo."),
           "Validador",
-          "La Entidad Externa aprobó el cierre del proyecto.",
+          "El Socio formador aprobó el cierre del proyecto.",
         ),
-      { type: "success", text: "Cierre aprobado. Queda pendiente validación administrativa del Validador." },
+      { type: "success", text: "Cierre aprobado. Conteste la encuesta de vinculación con el medio para finalizar su participación." },
     );
   };
 
@@ -162,7 +184,7 @@ export default function PortalEntidadPage() {
         addNotification(
           addProjectEvent({ ...project, status: "Cierre observado", closure: { ...(project.closure || {}), observation: comment, eeApproved: false } }, "ee", "Cierre observado", comment),
           "Docente",
-          "La Entidad Externa solicitó antecedentes adicionales para el cierre.",
+          "El Socio formador solicitó antecedentes adicionales para el cierre.",
         ),
       { type: "warning", text: "Observaciones de cierre enviadas al docente." },
     );
@@ -171,8 +193,8 @@ export default function PortalEntidadPage() {
   return (
     <AppShell active="entidad">
       <PageIntro
-        eyebrow="Portal Entidad Externa"
-        title="Revisión y validaciones EE"
+        eyebrow="Portal del Socio formador"
+        title="Revisión y validaciones"
         description="Bandeja para entregar V°B°, observar propuestas, validar hitos y revisar el resultado final del proyecto."
       />
 
@@ -182,11 +204,29 @@ export default function PortalEntidadPage() {
         </div>
       )}
 
+      {isAdmin && (
+        <div className="mb-5">
+          <Section title="Vista de Socio formador" subtitle="Selecciona el socio que quieres revisar o corregir desde este portal.">
+            <SelectField
+              label="Socio formador"
+              value={selectedEntityId}
+              onChange={(value) => {
+                setSelectedEntityId(value);
+                setSelectedId("");
+                setComment("");
+              }}
+              options={entityOptions}
+              placeholder="Todos los socios formadores"
+            />
+          </Section>
+        </div>
+      )}
+
       <div className="grid gap-5 xl:grid-cols-[380px_1fr]">
-        <Section title="Pendientes EE" subtitle="Propuestas, hitos y cierres que requieren acción.">
+        <Section title="Pendientes del Socio formador" subtitle="Propuestas, hitos y cierres que requieren acción.">
           <div className="space-y-3">
             {pendingProjects.length === 0 ? (
-              <EmptyState title="Sin pendientes" description="No hay propuestas, hitos o cierres pendientes de Entidad Externa." />
+              <EmptyState title="Sin pendientes" description="No hay propuestas, hitos o cierres pendientes del Socio formador." />
             ) : (
               pendingProjects.map((project) => (
                 <button
@@ -225,7 +265,7 @@ export default function PortalEntidadPage() {
               </div>
             </Section>
 
-            <Section title="Acción de Entidad Externa" subtitle="Elige una resolución según el estado actual.">
+            <Section title="Acción del Socio formador" subtitle="Elige una resolución según el estado actual.">
               {selectedProject.status === "Hito registrado" && (
                 <div className="mb-5">
                   <MilestoneReview milestone={selectedPendingMilestone} />
@@ -240,7 +280,7 @@ export default function PortalEntidadPage() {
               />
 
               <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
-                {selectedProject.status === "En revisión por EE" && (
+                {selectedProject.status === "En revisión por Socio formador" && (
                   <>
                     <ActionButton variant="outline" icon={<MessageSquare className="h-5 w-5" />} onClick={observeProposal}>Registrar observaciones</ActionButton>
                     <ActionButton icon={<CheckCircle2 className="h-5 w-5" />} onClick={approveProposal}>Entregar V°B°</ActionButton>
@@ -259,6 +299,12 @@ export default function PortalEntidadPage() {
                   </>
                 )}
               </div>
+
+              {selectedProject.status === "En cierre" && selectedProject.closure?.eeApproved && (
+                <div className="mt-5">
+                  <SurveyCallout />
+                </div>
+              )}
             </Section>
           </div>
         ) : (
@@ -274,6 +320,26 @@ function Info({ label, value }) {
     <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
       <p className="text-xs font-black uppercase tracking-wide text-neutral-400">{label}</p>
       <p className="mt-1 whitespace-pre-line text-sm font-semibold text-neutral-900">{value || "Pendiente"}</p>
+    </div>
+  );
+}
+
+function SurveyCallout() {
+  return (
+    <div className="rounded-2xl border border-[#f5b400]/40 bg-[#fff8df] p-4">
+      <p className="text-sm font-black text-neutral-950">Cierre aprobado por el Socio formador</p>
+      <p className="mt-1 text-sm leading-6 text-neutral-700">
+        Para completar la experiencia, conteste la encuesta de vinculación con el medio.
+      </p>
+      <a
+        href={SOCIO_FORMADOR_SURVEY_URL}
+        target="_blank"
+        rel="noreferrer"
+        className="mt-4 inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-[#f5b400] px-5 text-sm font-extrabold text-neutral-950 shadow-sm transition hover:bg-[#d99d00]"
+      >
+        <ExternalLink className="h-5 w-5" />
+        Conteste la encuesta de vinculación con el medio
+      </a>
     </div>
   );
 }

@@ -56,7 +56,7 @@ const initialAcademic = {
   semester: "",
 };
 
-const proposalReviewStatuses = ["Borrador", "En revisión por EE", "Correcciones solicitadas por Validador"];
+const proposalReviewStatuses = ["Borrador", "En revisión por Socio formador", "Correcciones solicitadas por Validador"];
 
 function needsMaintainerReview(project) {
   return project && proposalReviewStatuses.includes(project.status) && !project.application && !project.cancellation;
@@ -77,6 +77,8 @@ export default function DashboardMantenedor() {
   const [rejectionReason, setRejectionReason] = useState("");
   const [availabilityCancelReason, setAvailabilityCancelReason] = useState("");
   const [message, setMessage] = useState(null);
+  const managerActor = session?.role === "jc" ? "jc" : session?.role === "admin" ? "admin" : "vcm";
+  const managerLabel = session?.role === "jc" ? "Director de carrera" : session?.role === "admin" ? "Administrador" : "Validador";
 
   const selectedProject = visibleProjects.find((project) => project.id === selectedId) || firstPriorityProject;
 
@@ -88,7 +90,7 @@ export default function DashboardMantenedor() {
   const stats = useMemo(() => {
     const pendingMaintainer = visibleProjects.filter(needsMaintainerReview).length;
     const active = visibleProjects.filter((project) => project.status === "Proyecto en ejecución").length;
-    const readyToAssign = visibleProjects.filter((project) => ["Aprobada por Validador", "Aprobada por EE"].includes(project.status)).length;
+    const readyToAssign = visibleProjects.filter((project) => ["Aprobada por Validador", "Aprobada por Socio formador"].includes(project.status)).length;
     const finished = visibleProjects.filter((project) => project.status === "Finalizado exitosamente" || project.status === "Publicado como proyecto realizado").length;
     return { active, pendingMaintainer, readyToAssign, finished };
   }, [visibleProjects]);
@@ -115,7 +117,7 @@ export default function DashboardMantenedor() {
     const decisions = {
       approve: {
         status: "Aprobada por Validador",
-        title: "Propuesta aceptada por Validador",
+        title: `Propuesta aceptada por ${managerLabel}`,
         detail: comment || "La propuesta cumple las condiciones iniciales para continuar el flujo.",
         notification: "Su propuesta fue aceptada para continuar revisión interna.",
         notice: "Propuesta aceptada. Ya puede asignarse internamente.",
@@ -125,22 +127,20 @@ export default function DashboardMantenedor() {
         status: "Correcciones solicitadas por Validador",
         title: "Correcciones solicitadas",
         detail: comment,
-        notification: "El Validador solicitó correcciones sobre la propuesta.",
-        notice: "Correcciones enviadas a la Entidad Externa.",
+        notification: `El ${managerLabel} solicitó correcciones sobre la propuesta.`,
+        notice: "Correcciones enviadas al Socio formador.",
         type: "warning",
       },
       reject: {
         status: "Rechazado",
         title: "Propuesta denegada",
         detail: comment,
-        notification: "La propuesta fue denegada por el Validador.",
+        notification: `La propuesta fue denegada por el ${managerLabel}.`,
         notice: "Propuesta denegada.",
         type: "warning",
       },
     };
     const config = decisions[decision];
-    const actor = session?.role === "jc" ? "jc" : "vcm";
-
     mutateSelected(
       (project) =>
         addNotification(
@@ -153,14 +153,14 @@ export default function DashboardMantenedor() {
                 decision,
                 comment,
                 reviewedAt: new Date().toISOString(),
-                reviewedBy: session?.name || "Validador",
+                reviewedBy: session?.name || managerLabel,
               },
             },
-            actor,
+            managerActor,
             config.title,
             config.detail,
           ),
-          "Entidad Externa",
+          "Socio formador",
           config.notification,
         ),
       { type: config.type, text: config.notice },
@@ -187,7 +187,7 @@ export default function DashboardMantenedor() {
                 ...assignment,
               },
             },
-            "vcm",
+            managerActor,
             "Propuesta asignada internamente",
             `${assignment.school} · ${assignment.career} · ${assignment.campus} · ${assignment.careerLead}`,
           ),
@@ -240,8 +240,8 @@ export default function DashboardMantenedor() {
       (project) => {
         const status = approved ? "Proyecto en ejecución" : "Disponible para docentes";
         const eventTitle = approved ? "Ejecución aprobada" : "Postulación docente rechazada";
-        const next = addProjectEvent({ ...project, status }, "vcm", eventTitle, approved ? "El proyecto fue aprobado para ejecución." : rejectionReason);
-        return addNotification(next, approved ? "Entidad Externa y Docente" : "Docente", approved ? "El proyecto fue aprobado para ejecución." : "La postulación fue rechazada por el Validador.");
+        const next = addProjectEvent({ ...project, status }, managerActor, eventTitle, approved ? "El proyecto fue aprobado para ejecución." : rejectionReason);
+        return addNotification(next, approved ? "Socio formador y Docente" : "Docente", approved ? "El proyecto fue aprobado para ejecución." : `La postulación fue rechazada por el ${managerLabel}.`);
       },
       { type: approved ? "success" : "warning", text: approved ? "Proyecto en ejecución." : "Postulación rechazada y proyecto disponible nuevamente." },
     );
@@ -265,15 +265,15 @@ export default function DashboardMantenedor() {
               cancellation: {
                 reason,
                 cancelledAt: new Date().toISOString(),
-                cancelledBy: session?.name || "Validador",
+                cancelledBy: session?.name || managerLabel,
                 source: "Sin toma docente",
               },
             },
-            session?.role === "jc" ? "jc" : "vcm",
+            managerActor,
             "Proyecto cancelado sin toma docente",
             reason,
           ),
-          "Entidad Externa, Director de carrera y Validador",
+          `Socio formador, Director de carrera y ${managerLabel}`,
           "El proyecto fue cancelado porque no fue tomado por un docente en el periodo correspondiente.",
         ),
       { type: "warning", text: "Proyecto cancelado por falta de toma docente." },
@@ -285,11 +285,11 @@ export default function DashboardMantenedor() {
     mutateSelected(
       (project) =>
         addNotification(
-          addProjectEvent({ ...project, status: "En revisión por EE" }, "vcm", "Propuesta corregida y reenviada", "El Validador incorporó observaciones de EE."),
-          "Entidad Externa",
+          addProjectEvent({ ...project, status: "En revisión por Socio formador" }, managerActor, "Propuesta corregida y reenviada", `El ${managerLabel} incorporó observaciones del Socio formador.`),
+          "Socio formador",
           "La propuesta corregida está disponible para nueva revisión.",
         ),
-      { type: "success", text: "Propuesta reenviada a EE." },
+      { type: "success", text: "Propuesta reenviada al Socio formador." },
     );
   };
 
@@ -297,8 +297,8 @@ export default function DashboardMantenedor() {
     mutateSelected(
       (project) =>
         addNotification(
-          addProjectEvent({ ...project, status: "Finalizado exitosamente" }, "vcm", "Cierre administrativo validado", "El proyecto queda finalizado exitosamente."),
-          "Entidad Externa, Docente y Validador",
+          addProjectEvent({ ...project, status: "Finalizado exitosamente" }, managerActor, "Cierre administrativo validado", "El proyecto queda finalizado exitosamente."),
+          `Socio formador, Docente y ${managerLabel}`,
           "El proyecto fue finalizado exitosamente.",
         ),
       { type: "success", text: "Proyecto finalizado exitosamente." },
@@ -316,8 +316,8 @@ export default function DashboardMantenedor() {
     mutateSelected(
       (project) =>
         addNotification(
-          addProjectEvent({ ...project, status: "Cancelado" }, "vcm", "Proyecto cancelado", project.cancellation?.reason || "Cancelación aprobada por el Validador."),
-          "Entidad Externa, Docente y Validador",
+          addProjectEvent({ ...project, status: "Cancelado" }, managerActor, "Proyecto cancelado", project.cancellation?.reason || `Cancelación aprobada por el ${managerLabel}.`),
+          `Socio formador, Docente y ${managerLabel}`,
           "El proyecto fue cancelado.",
         ),
       { type: "warning", text: "Proyecto cancelado." },
@@ -327,7 +327,7 @@ export default function DashboardMantenedor() {
   return (
     <AppShell active="dashboard">
       <PageIntro
-        eyebrow={session?.role === "jc" ? "Director de carrera" : "Validador"}
+        eyebrow={managerLabel}
         title="Dashboard de gestión"
         description="Bandeja central para revisar propuestas, estados, asignaciones, postulaciones, hitos, cierre y cancelaciones."
         actions={
@@ -378,7 +378,7 @@ export default function DashboardMantenedor() {
                 >
                   <div className="mb-4 flex flex-wrap items-center gap-2">
                     <StatusBadge status={project.status} />
-                    <RoleBadge role={project.status === "Asignada a Escuela / Carrera / Sede / Director de carrera" ? "jc" : "vcm"} />
+                    <RoleBadge role={project.status === "Asignada a Escuela / Carrera / Sede / Director de carrera" ? "jc" : managerActor} />
                   </div>
                   <p className="text-base font-black leading-6 text-neutral-950">{project.title}</p>
                   <p className="mt-2 text-sm font-semibold text-neutral-500">{project.entityName}</p>
@@ -426,6 +426,7 @@ export default function DashboardMantenedor() {
               validateClosure={validateClosure}
               publishFinishedProject={publishFinishedProject}
               cancelProject={cancelProject}
+              managerLabel={managerLabel}
             />
 
             <Section title="Bitácora y notificaciones" subtitle="Todo cambio de estado relevante registra evento y notificación." className="p-6" headerClassName="mb-6">
@@ -482,12 +483,13 @@ function ActionPanel({
   validateClosure,
   publishFinishedProject,
   cancelProject,
+  managerLabel,
 }) {
   if (needsMaintainerReview(project)) {
     return (
       <Section
         title="Revisión de propuesta"
-        subtitle="Antes de aceptarla, el Validador puede aprobar, denegar o solicitar correcciones a la contraparte."
+        subtitle={`Antes de aceptarla, el ${managerLabel} puede aprobar, denegar o solicitar correcciones a la contraparte.`}
         className="p-6"
         headerClassName="mb-6"
       >
@@ -507,15 +509,15 @@ function ActionPanel({
     );
   }
 
-  if (project.status === "Con observaciones de EE") {
+  if (project.status === "Con observaciones de Socio formador") {
     return (
-      <Section title="Corrección de propuesta" subtitle={project.observations || "La Entidad Externa solicitó ajustes."} className="p-6" headerClassName="mb-6">
-        <ActionButton icon={<ArrowRight className="h-5 w-5" />} onClick={resendObservedProposal}>Reenviar a EE</ActionButton>
+      <Section title="Corrección de propuesta" subtitle={project.observations || "El Socio formador solicitó ajustes."} className="p-6" headerClassName="mb-6">
+        <ActionButton icon={<ArrowRight className="h-5 w-5" />} onClick={resendObservedProposal}>Reenviar al Socio formador</ActionButton>
       </Section>
     );
   }
 
-  if (["Aprobada por Validador", "Aprobada por EE"].includes(project.status)) {
+  if (["Aprobada por Validador", "Aprobada por Socio formador"].includes(project.status)) {
     return (
       <Section title="Asignar Escuela / Carrera / Sede / Director de carrera" subtitle="La propuesta ya fue aceptada y puede pasar a asignación interna." className="p-6" headerClassName="mb-6">
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
@@ -550,7 +552,7 @@ function ActionPanel({
     return (
       <Section
         title="Disponibilidad docente"
-        subtitle="Si el proyecto no fue tomado dentro del periodo definido, el Validador puede cancelarlo."
+        subtitle={`Si el proyecto no fue tomado dentro del periodo definido, el ${managerLabel} puede cancelarlo.`}
         className="p-6"
         headerClassName="mb-6"
       >
@@ -573,7 +575,7 @@ function ActionPanel({
 
   if (project.status === "En revisión VCM" && project.application) {
     return (
-      <Section title="Revisar postulación docente" subtitle="RN-07: el Validador debe aprobar antes de iniciar ejecución." className="p-6" headerClassName="mb-6">
+      <Section title="Revisar postulación docente" subtitle={`RN-07: el ${managerLabel} debe aprobar antes de iniciar ejecución.`} className="p-6" headerClassName="mb-6">
         <div className="mb-6 grid gap-5 md:grid-cols-3">
           <Info label="Docente" value={project.application.teacher} />
           <Info label="Estudiantes" value={project.application.students} />
@@ -598,7 +600,7 @@ function ActionPanel({
 
   if (project.status === "En cierre" && project.closure?.eeApproved) {
     return (
-      <Section title="Validar cierre administrativo" subtitle="RN-12: solo el Validador puede finalizar administrativamente." className="p-6" headerClassName="mb-6">
+      <Section title="Validar cierre administrativo" subtitle={`RN-12: solo el ${managerLabel} puede finalizar administrativamente.`} className="p-6" headerClassName="mb-6">
         <ActionButton icon={<CheckCircle2 className="h-5 w-5" />} onClick={validateClosure}>Finalizar exitosamente</ActionButton>
       </Section>
     );

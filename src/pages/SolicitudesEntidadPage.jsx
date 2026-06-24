@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import {
   Building2,
+  ExternalLink,
   GraduationCap,
 } from "lucide-react";
 import {
@@ -8,6 +9,7 @@ import {
   EmptyState,
   PageIntro,
   Section,
+  SelectField,
   StatusBadge,
 } from "../components/VcmUI";
 import {
@@ -19,7 +21,7 @@ import {
 } from "../data/vcmPlatform";
 
 const trackedStatuses = [
-  "En revisión por EE",
+  "En revisión por Socio formador",
   "Correcciones solicitadas por Validador",
   "Aprobada por Validador",
   "Postulada / Tomada por docente",
@@ -36,11 +38,16 @@ const trackedStatuses = [
   "Rechazado",
 ];
 
+const SOCIO_FORMADOR_SURVEY_URL = "https://survey.alchemer.com/s3/8848039/Evaluaci-n-de-actividades-extracurricular-Socio-Formador";
+
 export default function SolicitudesEntidadPage() {
   ensureVcmData();
   const session = getSession();
   const [projects] = useState(getProjects);
   const [entities] = useState(getEntities);
+  const [selectedEntityId, setSelectedEntityId] = useState(() => getEntities()[0]?.id || "");
+  const isAdmin = session?.role === "admin";
+  const entityOptions = useMemo(() => entities.map((entity) => ({ value: entity.id, label: `${entity.name} · ${entity.rut}` })), [entities]);
 
   const entityIds = useMemo(
     () =>
@@ -51,12 +58,13 @@ export default function SolicitudesEntidadPage() {
   );
 
   const solicitudes = useMemo(() => {
-    const base = ["vcm", "jc"].includes(session?.role)
+    const base = ["admin", "jc"].includes(session?.role)
       ? getProjectsForSession(projects, session)
       : projects.filter((project) => entityIds.includes(project.entityId));
+    const scopedBase = isAdmin && selectedEntityId ? base.filter((project) => project.entityId === selectedEntityId) : base;
 
-    return base.filter((project) => project.application || trackedStatuses.includes(project.status));
-  }, [entityIds, projects, session]);
+    return scopedBase.filter((project) => project.application || trackedStatuses.includes(project.status));
+  }, [entityIds, isAdmin, projects, selectedEntityId, session]);
 
   const [selectedId, setSelectedId] = useState(solicitudes[0]?.id || "");
   const selectedProject = solicitudes.find((project) => project.id === selectedId) || solicitudes[0];
@@ -64,16 +72,33 @@ export default function SolicitudesEntidadPage() {
   return (
     <AppShell active="solicitudes-entidad">
       <PageIntro
-        eyebrow="Entidad Externa"
+        eyebrow="Socio formador"
         title="Mis solicitudes"
-        description="Seguimiento de solicitudes asociadas a la entidad cuando ya fueron tomadas por un docente o avanzaron de estado."
+        description="Seguimiento de solicitudes asociadas al Socio formador cuando ya fueron tomadas por un docente o avanzaron de estado."
       />
 
+      {isAdmin && (
+        <div className="mb-5">
+          <Section title="Vista de Socio formador" subtitle="Selecciona de qué socio quieres revisar las solicitudes.">
+            <SelectField
+              label="Socio formador"
+              value={selectedEntityId}
+              onChange={(value) => {
+                setSelectedEntityId(value);
+                setSelectedId("");
+              }}
+              options={entityOptions}
+              placeholder="Todos los socios formadores"
+            />
+          </Section>
+        </div>
+      )}
+
       <div className="grid gap-5 xl:grid-cols-[380px_1fr]">
-        <Section title="Solicitudes" subtitle="Proyectos vinculados a la entidad y su estado actual.">
+        <Section title="Solicitudes" subtitle="Proyectos vinculados al Socio formador y su estado actual.">
           <div className="space-y-3">
             {solicitudes.length === 0 ? (
-              <EmptyState title="Sin solicitudes tomadas" description="Aún no hay solicitudes tomadas por docentes para esta entidad." />
+              <EmptyState title="Sin solicitudes tomadas" description="Aún no hay solicitudes tomadas por docentes para este Socio formador." />
             ) : (
               solicitudes.map((project) => (
                 <button
@@ -102,7 +127,7 @@ export default function SolicitudesEntidadPage() {
                 <StatusBadge status={selectedProject.status} />
               </div>
               <div className="grid gap-4 md:grid-cols-2">
-                <Info icon={<Building2 className="h-5 w-5" />} label="Entidad" value={selectedProject.entityName} />
+                <Info icon={<Building2 className="h-5 w-5" />} label="Socio formador" value={selectedProject.entityName} />
                 <Info icon={<GraduationCap className="h-5 w-5" />} label="Docente" value={selectedProject.application?.teacher || "Pendiente"} />
                 <Info label="Asignatura" value={selectedProject.assignment?.subject} />
                 <Info label="Sección / semestre" value={[selectedProject.assignment?.section, selectedProject.assignment?.semester].filter(Boolean).join(" · ")} />
@@ -120,6 +145,20 @@ export default function SolicitudesEntidadPage() {
                 <Info label="Cierre" value={selectedProject.closure?.summary || "Pendiente"} />
               </div>
             </Section>
+
+            {shouldShowSurvey(selectedProject) && (
+              <Section title="Encuesta de satisfacción" subtitle="Disponible al cierre del flujo del Socio formador.">
+                <a
+                  href={SOCIO_FORMADOR_SURVEY_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-[#f5b400] px-5 text-sm font-extrabold text-neutral-950 shadow-sm transition hover:bg-[#d99d00]"
+                >
+                  <ExternalLink className="h-5 w-5" />
+                  Conteste la encuesta de vinculación con el medio
+                </a>
+              </Section>
+            )}
           </div>
         ) : (
           <EmptyState title="Selecciona una solicitud" description="El detalle aparecerá en esta zona." />
@@ -150,6 +189,13 @@ function lastMilestone(project) {
   const current = project.milestones?.[0];
   if (!current) return "Sin hitos registrados";
   return `${current.title} · ${current.status}`;
+}
+
+function shouldShowSurvey(project) {
+  return Boolean(
+    project?.closure?.eeApproved ||
+      ["Finalizado exitosamente", "Publicado como proyecto realizado"].includes(project?.status),
+  );
 }
 
 function formatTeams(project) {

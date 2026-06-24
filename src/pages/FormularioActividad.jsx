@@ -19,9 +19,11 @@ import {
   TextInput,
 } from "../components/VcmUI";
 import {
+  canAccessRoute,
   createProjectDraft,
   ensureVcmData,
   getEntities,
+  getRoleHome,
   getSession,
   modalidades,
   sedes,
@@ -75,7 +77,7 @@ export default function FormularioActividad() {
 
   const validate = () => {
     const required = [
-      ["Entidad Externa asociada", selectedEntity?.id],
+      ["Socio formador asociado", selectedEntity?.id],
       ["Título de la propuesta", form.title],
       ["Descripción de la necesidad", form.description],
       ["Objetivo general", form.objective],
@@ -105,10 +107,11 @@ export default function FormularioActividad() {
     setMessage({
       type: "success",
       text: sendToEe
-        ? "Propuesta enviada a revisión de Entidad Externa. Se generó notificación para EE."
+        ? "Propuesta enviada a revisión del Socio formador. Se generó notificación para el Socio formador."
         : "Propuesta guardada como borrador.",
     });
-    window.setTimeout(() => navigate(`/dashboard?proyecto=${project.id}`), 700);
+    const nextRoute = canAccessRoute(session?.role, "/dashboard") ? `/dashboard?proyecto=${project.id}` : getRoleHome(session?.role);
+    window.setTimeout(() => navigate(nextRoute), 700);
   };
 
   return (
@@ -116,12 +119,14 @@ export default function FormularioActividad() {
       <PageIntro
         eyebrow="Registro y validación de propuesta"
         title="Formulario de propuesta VCM"
-        description="Crea una propuesta asociada a Entidad Externa. Según las reglas del documento, no puede avanzar sin contraparte y V°B° de EE."
+        description="Crea una propuesta asociada a un Socio formador. Según las reglas del documento, no puede avanzar sin contraparte y V°B° del Socio formador."
         actions={
-          <Link to="/dashboard" className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-neutral-300 bg-white px-5 text-sm font-extrabold text-neutral-950 transition hover:bg-neutral-100">
-            <ArrowLeft className="h-5 w-5" />
-            Volver al dashboard
-          </Link>
+          canAccessRoute(session?.role, "/dashboard") ? (
+            <Link to="/dashboard" className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-neutral-300 bg-white px-5 text-sm font-extrabold text-neutral-950 transition hover:bg-neutral-100">
+              <ArrowLeft className="h-5 w-5" />
+              Volver al dashboard
+            </Link>
+          ) : null
         }
       />
 
@@ -133,29 +138,29 @@ export default function FormularioActividad() {
 
       <div className="grid gap-5 xl:grid-cols-[1fr_340px]">
         <div className="space-y-5">
-          <Section number="1" title="Entidad Externa asociada" subtitle="La propuesta no puede crearse sin una entidad registrada.">
+          <Section number="1" title="Socio formador asociado" subtitle="La propuesta no puede crearse sin un socio registrado.">
             {entities.length === 0 ? (
               <EmptyState
-                title="No hay entidades registradas"
-                description="Registra una Entidad Externa antes de crear la propuesta VCM."
+                title="No hay socios formadores registrados"
+                description="Registra un Socio formador antes de crear la propuesta VCM."
                 action={
                   <Link to="/registro" className="inline-flex h-12 items-center justify-center rounded-lg bg-[#f5b400] px-5 text-sm font-extrabold text-neutral-950">
-                    Registrar entidad
+                    Registrar socio formador
                   </Link>
                 }
               />
             ) : (
               <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-end">
                 <SelectField
-                  label="Entidad Externa"
+                  label="Socio formador"
                   required
                   value={form.entityId}
                   onChange={(value) => update("entityId", value)}
                   options={entityOptions}
-                  placeholder="Seleccione entidad"
+                  placeholder="Seleccione socio formador"
                 />
                 <Link to="/registro" className="inline-flex h-12 items-center justify-center rounded-lg border border-neutral-300 bg-white px-5 text-sm font-extrabold text-neutral-950 transition hover:bg-neutral-100">
-                  Nueva entidad
+                  Nuevo socio formador
                 </Link>
               </div>
             )}
@@ -169,7 +174,7 @@ export default function FormularioActividad() {
                   required
                   value={form.title}
                   onChange={(value) => update("title", value)}
-                  placeholder="Ej: Mejora de procesos digitales para entidad externa"
+                  placeholder="Ej: Mejora de procesos digitales para socio formador"
                 />
                 <TextInput
                   label="Validador responsable"
@@ -184,7 +189,7 @@ export default function FormularioActividad() {
                 maxLength={900}
                 value={form.description}
                 onChange={(value) => update("description", value)}
-                placeholder="Problema, oportunidad o requerimiento planteado por la Entidad Externa."
+                placeholder="Problema, oportunidad o requerimiento planteado por el Socio formador."
               />
               <TextArea
                 label="Objetivo general"
@@ -244,7 +249,7 @@ export default function FormularioActividad() {
               Guardar borrador
             </ActionButton>
             <ActionButton icon={<Send className="h-5 w-5" />} onClick={() => save(true)}>
-              Enviar a revisión EE
+              Enviar a revisión del Socio formador
             </ActionButton>
           </div>
         </div>
@@ -259,13 +264,13 @@ export default function FormularioActividad() {
               </div>
             </div>
             <div className="space-y-3">
-              <Summary label="Entidad" value={selectedEntity?.name || "Pendiente"} />
+              <Summary label="Socio formador" value={selectedEntity?.name || "Pendiente"} />
               <Summary label="RUT" value={selectedEntity?.rut || "Pendiente"} />
               <Summary label="Título" value={form.title || "Pendiente"} />
               <Summary label="Equipos" value={`${form.teamCount || "0"} equipo(s) · ${form.peoplePerTeam || "0"} persona(s)`} />
               <Summary label="Modalidad" value={form.modality || "Pendiente"} />
               <Summary label="Sede destino" value={form.targetCampus || "Pendiente"} />
-              <Summary label="Estado inicial" value="Borrador / En revisión por EE" />
+              <Summary label="Estado inicial" value="Borrador / En revisión por Socio formador" />
             </div>
           </div>
 
@@ -275,9 +280,9 @@ export default function FormularioActividad() {
               <h3 className="text-lg font-black text-neutral-950">Reglas aplicadas</h3>
             </div>
             <ul className="space-y-2 text-sm leading-6 text-neutral-600">
-              <li>No se crea propuesta sin Entidad Externa.</li>
-              <li>El envío genera notificación a EE.</li>
-              <li>La asignación académica se bloquea hasta V°B° de EE.</li>
+              <li>No se crea propuesta sin Socio formador.</li>
+              <li>El envío genera notificación al Socio formador.</li>
+              <li>La asignación académica se bloquea hasta V°B° del Socio formador.</li>
             </ul>
           </div>
         </aside>

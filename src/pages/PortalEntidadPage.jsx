@@ -165,8 +165,8 @@ export default function PortalEntidadPage() {
     mutate(
       (project) =>
         addNotification(
-          addProjectEvent({ ...project, status: "En cierre", closure: { ...(project.closure || {}), eeApproved: true } }, "ee", "Cierre aprobado por Socio formador", "El Validador debe validar el término administrativo."),
-          "Validador",
+          addProjectEvent({ ...project, status: "En cierre", closure: { ...(project.closure || {}), eeApproved: true } }, "ee", "Cierre aprobado por Socio formador", "El Validador o Director responsable debe validar el término administrativo."),
+          "Validador y Director de carrera",
           "El Socio formador aprobó el cierre del proyecto.",
         ),
       { type: "success", text: "Cierre aprobado. Conteste la encuesta de vinculación con el medio para finalizar su participación." },

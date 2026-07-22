@@ -62,13 +62,25 @@ function needsMaintainerReview(project) {
   return project && proposalReviewStatuses.includes(project.status) && !project.application && !project.cancellation;
 }
 
+function needsDirectorAction(project) {
+  return Boolean(
+    project &&
+      (project.status === "Asignada a Escuela / Carrera / Sede / Director de carrera" ||
+        (project.status === "En revisión VCM" && (project.application || project.cancellation)) ||
+        (project.status === "En cierre" && project.closure?.eeApproved) ||
+        project.status === "Finalizado exitosamente"),
+  );
+}
+
 export default function DashboardMantenedor() {
   ensureVcmData();
   const session = getSession();
+  const isDirector = session?.role === "jc";
+  const canReviewInitialProposal = !isDirector;
   const [searchParams] = useSearchParams();
   const [projects, setProjects] = useState(getProjects);
   const visibleProjects = useMemo(() => getProjectsForSession(projects, session), [projects, session]);
-  const firstPriorityProject = visibleProjects.find(needsMaintainerReview) || visibleProjects[0];
+  const firstPriorityProject = visibleProjects.find(isDirector ? needsDirectorAction : needsMaintainerReview) || visibleProjects[0];
   const [statusFilter, setStatusFilter] = useState("");
   const [selectedId, setSelectedId] = useState(searchParams.get("proyecto") || firstPriorityProject?.id || "");
   const [assignment, setAssignment] = useState(initialAssignment);
@@ -84,16 +96,21 @@ export default function DashboardMantenedor() {
 
   const filteredProjects = useMemo(() => {
     const base = statusFilter ? visibleProjects.filter((project) => project.status === statusFilter) : visibleProjects;
-    return [...base].sort((left, right) => Number(needsMaintainerReview(right)) - Number(needsMaintainerReview(left)));
-  }, [visibleProjects, statusFilter]);
+    const needsAction = isDirector ? needsDirectorAction : needsMaintainerReview;
+    return [...base].sort((left, right) => Number(needsAction(right)) - Number(needsAction(left)));
+  }, [isDirector, visibleProjects, statusFilter]);
 
   const stats = useMemo(() => {
-    const pendingMaintainer = visibleProjects.filter(needsMaintainerReview).length;
+    const pendingMaintainer = visibleProjects.filter(isDirector ? needsDirectorAction : needsMaintainerReview).length;
     const active = visibleProjects.filter((project) => project.status === "Proyecto en ejecución").length;
-    const readyToAssign = visibleProjects.filter((project) => ["Aprobada por Validador", "Aprobada por Socio formador"].includes(project.status)).length;
+    const readyToAssign = visibleProjects.filter((project) =>
+      isDirector
+        ? project.status === "Asignada a Escuela / Carrera / Sede / Director de carrera"
+        : ["Aprobada por Validador", "Aprobada por Socio formador"].includes(project.status),
+    ).length;
     const finished = visibleProjects.filter((project) => project.status === "Finalizado exitosamente" || project.status === "Publicado como proyecto realizado").length;
     return { active, pendingMaintainer, readyToAssign, finished };
-  }, [visibleProjects]);
+  }, [isDirector, visibleProjects]);
 
   const refresh = (notice) => {
     const next = getProjects();
@@ -108,6 +125,11 @@ export default function DashboardMantenedor() {
   };
 
   const reviewProposal = (decision) => {
+    if (!canReviewInitialProposal) {
+      setMessage({ type: "error", text: "La validación inicial corresponde al Validador antes de asignar el proyecto a una Escuela y Carrera." });
+      return;
+    }
+
     const comment = proposalReviewComment.trim();
     if (decision !== "approve" && !comment) {
       setMessage({ type: "error", text: "Agrega una observación antes de denegar o pedir correcciones." });
@@ -218,7 +240,7 @@ export default function DashboardMantenedor() {
                 ...academic,
               },
             },
-            "jc",
+            managerActor,
             "Asignatura asociada a propuesta",
             `${academic.subject} · ${academic.section} · ${academic.semester}`,
           ),
@@ -238,12 +260,29 @@ export default function DashboardMantenedor() {
 
     mutateSelected(
       (project) => {
-        const status = approved ? "Proyecto en ejecución" : "Disponible para docentes";
+        const reviewedAt = new Date().toISOString();
+        const status = approved ? "Docente aprobado / Nómina pendiente" : "Disponible para docentes";
         const eventTitle = approved ? "Ejecución aprobada" : "Postulación docente rechazada";
-        const next = addProjectEvent({ ...project, status }, managerActor, eventTitle, approved ? "El proyecto fue aprobado para ejecución." : rejectionReason);
-        return addNotification(next, approved ? "Socio formador y Docente" : "Docente", approved ? "El proyecto fue aprobado para ejecución." : `La postulación fue rechazada por el ${managerLabel}.`);
+        const reviewedApplication = {
+          ...project.application,
+          reviewStatus: approved ? "APROBADA" : "RECHAZADA",
+          reviewedAt,
+          reviewedBy: session?.name || managerLabel,
+          rejectionReason: approved ? "" : rejectionReason,
+        };
+        const detail = approved
+          ? "El docente fue aprobado para ejecutar el proyecto y registrar la nómina de alumnos."
+          : rejectionReason;
+        const next = addProjectEvent({ ...project, status, application: reviewedApplication }, managerActor, eventTitle, detail);
+        return addNotification(
+          next,
+          approved ? "Socio formador y Docente" : "Docente",
+          approved
+            ? "La ejecución fue aprobada. El docente ya puede registrar alumnos y equipos."
+            : `La postulación fue rechazada por el ${managerLabel}.`,
+        );
       },
-      { type: approved ? "success" : "warning", text: approved ? "Proyecto en ejecución." : "Postulación rechazada y proyecto disponible nuevamente." },
+      { type: approved ? "success" : "warning", text: approved ? "Docente aprobado. Ya puede registrar la nómina e iniciar la ejecución." : "Postulación rechazada y proyecto disponible nuevamente." },
     );
     setRejectionReason("");
   };
@@ -329,18 +368,29 @@ export default function DashboardMantenedor() {
       <PageIntro
         eyebrow={managerLabel}
         title="Dashboard de gestión"
-        description="Bandeja central para revisar propuestas, estados, asignaciones, postulaciones, hitos, cierre y cancelaciones."
+        description={
+          isDirector
+            ? `Gestión delegada de proyectos asociados a ${session?.school || "su Escuela"} y a sus carreras asignadas.`
+            : "Bandeja central para revisar propuestas, estados, asignaciones, postulaciones, hitos, cierre y cancelaciones."
+        }
         actions={
-          <Link to="/formulario" className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-[#f5b400] px-5 text-sm font-extrabold text-neutral-950 transition hover:bg-[#d99d00]">
-            <FilePlus2 className="h-5 w-5" />
-            Nueva propuesta
-          </Link>
+          isDirector ? (
+            <Link to="/director-proyectos" className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-neutral-300 bg-white px-5 text-sm font-extrabold text-neutral-950 transition hover:bg-neutral-100">
+              <ArrowRight className="h-5 w-5" />
+              Ver reporte de Escuela
+            </Link>
+          ) : (
+            <Link to="/formulario" className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-[#f5b400] px-5 text-sm font-extrabold text-neutral-950 transition hover:bg-[#d99d00]">
+              <FilePlus2 className="h-5 w-5" />
+              Nueva propuesta
+            </Link>
+          )
         }
       />
 
       <div className="mb-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon={<Bell className="h-5 w-5" />} label="Por revisar" value={stats.pendingMaintainer} />
-        <StatCard icon={<ClipboardList className="h-5 w-5" />} label="Para asignar" value={stats.readyToAssign} />
+        <StatCard icon={<Bell className="h-5 w-5" />} label={isDirector ? "Acciones pendientes" : "Por revisar"} value={stats.pendingMaintainer} />
+        <StatCard icon={<ClipboardList className="h-5 w-5" />} label={isDirector ? "Asignación académica" : "Para asignar"} value={stats.readyToAssign} />
         <StatCard icon={<Briefcase className="h-5 w-5" />} label="En ejecución" value={stats.active} />
         <StatCard icon={<CheckCircle2 className="h-5 w-5" />} label="Finalizados/publicados" value={stats.finished} />
       </div>
@@ -352,7 +402,12 @@ export default function DashboardMantenedor() {
       )}
 
       <div className="grid gap-7 xl:grid-cols-[minmax(360px,440px)_minmax(0,1fr)]">
-        <Section title="Proyectos" subtitle="Filtro por estado recomendado del documento." className="p-6" headerClassName="mb-6">
+        <Section
+          title="Proyectos"
+          subtitle={isDirector ? "Solo proyectos asignados a su Escuela y Carrera." : "Filtro por estado del flujo VCM."}
+          className="p-6"
+          headerClassName="mb-6"
+        >
           <div className="mb-6">
             <SelectField
               label="Filtrar estado"
@@ -427,6 +482,7 @@ export default function DashboardMantenedor() {
               publishFinishedProject={publishFinishedProject}
               cancelProject={cancelProject}
               managerLabel={managerLabel}
+              canReviewInitialProposal={canReviewInitialProposal}
             />
 
             <Section title="Bitácora y notificaciones" subtitle="Todo cambio de estado relevante registra evento y notificación." className="p-6" headerClassName="mb-6">
@@ -484,8 +540,17 @@ function ActionPanel({
   publishFinishedProject,
   cancelProject,
   managerLabel,
+  canReviewInitialProposal,
 }) {
   if (needsMaintainerReview(project)) {
+    if (!canReviewInitialProposal) {
+      return (
+        <Section title="Validación inicial reservada" subtitle="La propuesta todavía debe ser resuelta por el Validador antes de ingresar al ámbito académico del Director." className="p-6" headerClassName="mb-6">
+          <Notice>Cuando el Validador asigne Escuela y Carrera, el proyecto aparecerá habilitado para gestión académica.</Notice>
+        </Section>
+      );
+    }
+
     return (
       <Section
         title="Revisión de propuesta"
@@ -578,8 +643,11 @@ function ActionPanel({
       <Section title="Revisar postulación docente" subtitle={`RN-07: el ${managerLabel} debe aprobar antes de iniciar ejecución.`} className="p-6" headerClassName="mb-6">
         <div className="mb-6 grid gap-5 md:grid-cols-3">
           <Info label="Docente" value={project.application.teacher} />
-          <Info label="Estudiantes" value={project.application.students} />
           <Info label="Fechas" value={`${project.application.startDate} a ${project.application.endDate}`} />
+          <Info label="Hitos comprometidos" value={project.application.milestonesText} />
+        </div>
+        <div className="mb-6">
+          <Notice type="info">La cantidad de equipos proviene del formulario del Socio formador. Los RUT se registrarán solamente si esta postulación es aprobada.</Notice>
         </div>
         <TextArea label="Motivo de rechazo" value={rejectionReason} onChange={setRejectionReason} placeholder="Completar solo si se rechaza." />
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
@@ -594,6 +662,14 @@ function ActionPanel({
     return (
       <Section title="Revisar cancelación" subtitle={project.cancellation.reason} className="p-6" headerClassName="mb-6">
         <ActionButton variant="danger" icon={<XCircle className="h-5 w-5" />} onClick={cancelProject}>Cambiar a Cancelado</ActionButton>
+      </Section>
+    );
+  }
+
+  if (project.status === "Docente aprobado / Nómina pendiente") {
+    return (
+      <Section title="Nómina pendiente" subtitle="El docente ya fue aprobado y debe registrar los alumnos antes de comenzar la ejecución." className="p-6" headerClassName="mb-6">
+        <Notice type="info">Cuando el docente guarde al menos un RUT desde Mis solicitudes, el proyecto cambiará automáticamente a Proyecto en ejecución.</Notice>
       </Section>
     );
   }

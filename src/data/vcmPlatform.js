@@ -1,3 +1,5 @@
+import { isValidStudentRut, normalizeStudentRut } from "../utils/studentRut";
+
 export const roles = {
   admin: {
     label: "Administrador",
@@ -21,7 +23,7 @@ export const roles = {
     label: "Director de carrera",
     short: "DIR",
     route: "/director-proyectos",
-    description: "Consulta proyectos de su escuela, filtra estados y exporta reportes.",
+    description: "Consulta y gestiona proyectos de sus escuelas y carreras asignadas.",
   },
   docente: {
     label: "Docente",
@@ -53,6 +55,7 @@ export const projectStatuses = [
   "Disponible para docentes",
   "Postulada / Tomada por docente",
   "En revisión VCM",
+  "Docente aprobado / Nómina pendiente",
   "Proyecto en ejecución",
   "Hito registrado",
   "Hito observado",
@@ -77,14 +80,15 @@ export const statusMeta = {
   "Asignada a asignatura": { tone: "info", description: "El Director de carrera vinculó asignatura, sección y semestre." },
   "Disponible para docentes": { tone: "success", description: "Visible en catálogo docente." },
   "Postulada / Tomada por docente": { tone: "warning", description: "Un docente tomó el proyecto y registró ejecución inicial." },
-  "En revisión VCM": { tone: "warning", description: "El Validador debe revisar una postulación o solicitud." },
+  "En revisión VCM": { tone: "warning", description: "El Validador o el Director responsable debe revisar una postulación o solicitud." },
+  "Docente aprobado / Nómina pendiente": { tone: "info", description: "La postulación fue aprobada y el docente debe registrar los alumnos antes de iniciar la ejecución." },
   "Proyecto en ejecución": { tone: "success", description: "Proyecto aprobado para ejecución." },
   "Hito registrado": { tone: "warning", description: "Hito enviado a validación del Socio formador." },
   "Hito observado": { tone: "danger", description: "El Socio formador registró observaciones sobre el hito." },
   "Hito aprobado": { tone: "success", description: "El Socio formador validó el hito." },
   "En cierre": { tone: "warning", description: "Docente solicitó cierre o el Socio formador aprobó resultado final." },
   "Cierre observado": { tone: "danger", description: "El Socio formador solicitó evidencias finales adicionales." },
-  "Finalizado exitosamente": { tone: "success", description: "El Validador validó cierre administrativo." },
+  "Finalizado exitosamente": { tone: "success", description: "El Validador o el Director responsable validó el cierre administrativo." },
   "Publicado como proyecto realizado": { tone: "success", description: "Disponible en repositorio de experiencias realizadas." },
   Cancelado: { tone: "danger", description: "Proyecto detenido antes de finalizar." },
   Rechazado: { tone: "danger", description: "Propuesta o postulación rechazada definitivamente." },
@@ -126,6 +130,7 @@ const adminNavigation = [
 
 const directorNavigation = [
   { label: "Proyectos escuela", to: "/director-proyectos", active: "director-proyectos" },
+  { label: "Gestión VCM", to: "/dashboard", active: "dashboard" },
 ];
 
 export const roleNavigation = {
@@ -148,7 +153,7 @@ export const roleNavigation = {
 };
 
 export const routeAccess = {
-  "/dashboard": ["admin", "vcm"],
+  "/dashboard": ["admin", "vcm", "jc"],
   "/director-proyectos": ["admin", "jc"],
   "/formulario": ["admin", "vcm", "ee", "docente"],
   "/portal-entidad": ["admin", "ee"],
@@ -175,11 +180,15 @@ export function canAccessRoute(role, pathname) {
 const STORAGE_KEYS = {
   entities: "vcmEntities",
   projects: "vcmProjects",
+  students: "vcmStudents",
+  studentParticipations: "vcmStudentParticipations",
+  studentDemoVersion: "vcmStudentDemoVersion",
   session: "vcmSession",
   version: "vcmDataVersion",
 };
 
 const DATA_VERSION = "vcm-rich-demo-projects-v2";
+const STUDENT_DEMO_VERSION = "vcm-student-rosters-v1";
 
 const now = () => new Date().toISOString();
 
@@ -224,13 +233,14 @@ export function projectMatchesDirectorScope(project, session) {
   if (!project || session?.role !== "jc") return true;
 
   const assignment = project.assignment || {};
-  const schoolMatches = normalize(assignment.school) === normalize(session.school);
-  const careerMatches = (session.careers || [session.career]).filter(Boolean).some((career) => normalize(career) === normalize(assignment.career));
-  const subjectMatches = (session.subjects || []).some((subject) => normalize(subject) === normalize(assignment.subject));
-  const leadMatches = normalize(assignment.careerLead) === normalize(session.name);
-  const createdByMatches = normalize(project.createdBy) === normalize(session.name);
+  if (!project.assignment) return false;
 
-  return createdByMatches || (Boolean(project.assignment) && (leadMatches || (schoolMatches && (careerMatches || subjectMatches))));
+  const schoolMatches = normalize(assignment.school) === normalize(session.school);
+  const scopedCareers = (session.careers || [session.career]).filter(Boolean);
+  const careerMatches = scopedCareers.length === 0 || scopedCareers.some((career) => normalize(career) === normalize(assignment.career));
+  const leadMatches = normalize(assignment.careerLead) === normalize(session.name);
+
+  return schoolMatches && (careerMatches || leadMatches);
 }
 
 export function getProjectsForSession(projects, session) {
@@ -344,6 +354,7 @@ const approvedBySocioStatuses = [
   "Disponible para docentes",
   "Postulada / Tomada por docente",
   "En revisión VCM",
+  "Docente aprobado / Nómina pendiente",
   "Proyecto en ejecución",
   "Hito registrado",
   "Hito observado",
@@ -1119,18 +1130,102 @@ const seedProjects = [
   }),
 ];
 
+function calculateRutVerifier(body) {
+  let sum = 0;
+  let multiplier = 2;
+  for (const digit of String(body).split("").reverse()) {
+    sum += Number(digit) * multiplier;
+    multiplier = multiplier === 7 ? 2 : multiplier + 1;
+  }
+  const result = 11 - (sum % 11);
+  return result === 11 ? "0" : result === 10 ? "K" : String(result);
+}
+
+function makeDemoStudent(index) {
+  const body = 90000001 + index;
+  const rut = normalizeStudentRut(`${body}-${calculateRutVerifier(body)}`);
+  return {
+    id: `est-demo-${String(index + 1).padStart(3, "0")}`,
+    rut,
+    active: true,
+    isDemo: true,
+    createdAt: "2026-07-01T12:00:00.000Z",
+    updatedAt: "2026-07-01T12:00:00.000Z",
+  };
+}
+
+const demoRosterDefinitions = [
+  { projectId: "proy-demo-003", count: 24, teamCount: 6, offset: 0 },
+  { projectId: "proy-demo-015", count: 20, teamCount: 4, offset: 20 },
+  { projectId: "proy-demo-016", count: 25, teamCount: 5, offset: 36 },
+  { projectId: "proy-demo-021", count: 18, teamCount: 3, offset: 57 },
+];
+
+const seedStudents = Array.from({ length: 75 }, (_, index) => makeDemoStudent(index));
+const seedStudentParticipations = demoRosterDefinitions.flatMap((definition) =>
+  Array.from({ length: definition.count }, (_, index) => {
+    const student = seedStudents[definition.offset + index];
+    return {
+      id: `part-demo-${definition.projectId}-${String(index + 1).padStart(2, "0")}`,
+      studentId: student.id,
+      projectId: definition.projectId,
+      executionId: definition.projectId,
+      teamNumber: (index % definition.teamCount) + 1,
+      registeredBy: "Docente Demo",
+      status: "ACTIVO",
+      registeredAt: "2026-07-02T12:00:00.000Z",
+      isDemo: true,
+    };
+  }),
+);
+
+function ensureDemoStudentData() {
+  if (!canUseStorage() || window.localStorage.getItem(STORAGE_KEYS.studentDemoVersion) === STUDENT_DEMO_VERSION) return;
+
+  const currentStudents = readCollection(STORAGE_KEYS.students, []);
+  const studentByRut = new Map(currentStudents.map((student) => [student.rut, student]));
+  const nextStudents = [...currentStudents];
+  seedStudents.forEach((student) => {
+    if (studentByRut.has(student.rut)) return;
+    nextStudents.push(student);
+    studentByRut.set(student.rut, student);
+  });
+
+  const demoStudentIdMap = new Map(seedStudents.map((student) => [student.id, studentByRut.get(student.rut).id]));
+  const currentParticipations = readCollection(STORAGE_KEYS.studentParticipations, []);
+  const participationKeys = new Set(currentParticipations.map((participation) => `${participation.projectId}|${participation.studentId}`));
+  const nextParticipations = [...currentParticipations];
+  seedStudentParticipations.forEach((participation) => {
+    const mappedParticipation = { ...participation, studentId: demoStudentIdMap.get(participation.studentId) };
+    const key = `${mappedParticipation.projectId}|${mappedParticipation.studentId}`;
+    if (participationKeys.has(key)) return;
+    nextParticipations.push(mappedParticipation);
+    participationKeys.add(key);
+  });
+
+  writeCollection(STORAGE_KEYS.students, nextStudents);
+  writeCollection(STORAGE_KEYS.studentParticipations, nextParticipations);
+  window.localStorage.setItem(STORAGE_KEYS.studentDemoVersion, STUDENT_DEMO_VERSION);
+}
+
 export function ensureVcmData() {
   if (!canUseStorage()) return;
 
   if (window.localStorage.getItem(STORAGE_KEYS.version) !== DATA_VERSION) {
     writeCollection(STORAGE_KEYS.entities, seedEntities);
     writeCollection(STORAGE_KEYS.projects, seedProjects);
+    writeCollection(STORAGE_KEYS.students, seedStudents);
+    writeCollection(STORAGE_KEYS.studentParticipations, seedStudentParticipations);
+    window.localStorage.setItem(STORAGE_KEYS.studentDemoVersion, STUDENT_DEMO_VERSION);
     window.localStorage.setItem(STORAGE_KEYS.version, DATA_VERSION);
     return;
   }
 
   readCollection(STORAGE_KEYS.entities, seedEntities);
   readCollection(STORAGE_KEYS.projects, seedProjects);
+  readCollection(STORAGE_KEYS.students, []);
+  readCollection(STORAGE_KEYS.studentParticipations, []);
+  ensureDemoStudentData();
 }
 
 export function getSession() {
@@ -1174,6 +1269,144 @@ export function saveEntity(entity) {
 
 export function getProjects() {
   return readCollection(STORAGE_KEYS.projects, seedProjects);
+}
+
+export function getStudents() {
+  return readCollection(STORAGE_KEYS.students, []);
+}
+
+export function getStudentParticipations() {
+  return readCollection(STORAGE_KEYS.studentParticipations, []);
+}
+
+export function getStudentParticipationsForProject(projectId) {
+  const studentsById = Object.fromEntries(getStudents().map((student) => [student.id, student]));
+
+  return getStudentParticipations()
+    .filter((participation) => participation.projectId === projectId && participation.status === "ACTIVO")
+    .map((participation) => ({
+      ...participation,
+      rut: studentsById[participation.studentId]?.rut || "RUT no disponible",
+      isDemo: studentsById[participation.studentId]?.isDemo || participation.isDemo || false,
+    }))
+    .sort((left, right) => {
+      const teamDifference = Number(left.teamNumber || 999) - Number(right.teamNumber || 999);
+      return teamDifference || left.rut.localeCompare(right.rut, "es");
+    });
+}
+
+const STUDENT_ROSTER_EDITABLE_STATUSES = new Set([
+  "Docente aprobado / Nómina pendiente",
+  "Proyecto en ejecución",
+  "Hito registrado",
+  "Hito observado",
+  "Hito aprobado",
+  "Cierre observado",
+]);
+
+const TEACHER_APPLICATION_APPROVED_STATUSES = new Set([
+  ...STUDENT_ROSTER_EDITABLE_STATUSES,
+  "En cierre",
+  "Finalizado exitosamente",
+  "Publicado como proyecto realizado",
+]);
+
+export function isTeacherApplicationApproved(project) {
+  if (!project?.application) return false;
+  if (project.application.reviewStatus === "APROBADA") return true;
+  if (["PENDIENTE", "RECHAZADA"].includes(project.application.reviewStatus)) return false;
+  return TEACHER_APPLICATION_APPROVED_STATUSES.has(project.status);
+}
+
+export function canEditProjectStudentRoster(project) {
+  return isTeacherApplicationApproved(project) && STUDENT_ROSTER_EDITABLE_STATUSES.has(project.status);
+}
+
+export function replaceProjectStudentParticipations(projectId, rows, registeredBy, teamCount = 0) {
+  const project = getProjects().find((item) => item.id === projectId);
+  if (!project) throw new Error("No se encontró el proyecto para registrar la nómina.");
+  if (!isTeacherApplicationApproved(project)) {
+    throw new Error("La nómina se habilita después de que la postulación docente sea aprobada.");
+  }
+  if (!canEditProjectStudentRoster(project)) {
+    throw new Error("La nómina no se puede modificar en el estado actual del proyecto.");
+  }
+
+  const desired = rows
+    .map((row) => ({
+      rut: normalizeStudentRut(row.rut),
+      teamNumber: row.teamNumber ? Number(row.teamNumber) : null,
+    }))
+    .filter((row) => row.rut);
+
+  if (desired.length === 0) throw new Error("Agrega al menos un alumno a la nómina.");
+
+  const invalidRuts = desired.filter((row) => !isValidStudentRut(row.rut)).map((row) => row.rut);
+  if (invalidRuts.length > 0) throw new Error(`RUT inválido: ${invalidRuts.join(", ")}.`);
+
+  const uniqueRuts = new Set(desired.map((row) => row.rut));
+  if (uniqueRuts.size !== desired.length) throw new Error("Un alumno no puede aparecer dos veces en el mismo proyecto.");
+
+  const invalidTeams = desired.filter(
+    (row) => row.teamNumber !== null && (!Number.isInteger(row.teamNumber) || row.teamNumber < 1 || (Number(teamCount) > 0 && row.teamNumber > Number(teamCount))),
+  );
+  if (invalidTeams.length > 0) throw new Error(`El equipo debe estar entre 1 y ${teamCount}.`);
+
+  const timestamp = now();
+  const students = getStudents();
+  const nextStudents = [...students];
+  const studentByRut = new Map(students.map((student) => [student.rut, student]));
+
+  desired.forEach((row) => {
+    if (studentByRut.has(row.rut)) return;
+    const student = {
+      id: createId("est"),
+      rut: row.rut,
+      active: true,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    nextStudents.push(student);
+    studentByRut.set(row.rut, student);
+  });
+
+  const participations = getStudentParticipations();
+  const currentByStudent = new Map(
+    participations
+      .filter((participation) => participation.projectId === projectId && participation.status === "ACTIVO")
+      .map((participation) => [participation.studentId, participation]),
+  );
+  const desiredStudentIds = new Set(desired.map((row) => studentByRut.get(row.rut).id));
+
+  const nextParticipations = participations.map((participation) => {
+    if (participation.projectId !== projectId || participation.status !== "ACTIVO" || desiredStudentIds.has(participation.studentId)) return participation;
+    return { ...participation, status: "RETIRADO", retiredAt: timestamp };
+  });
+
+  desired.forEach((row) => {
+    const student = studentByRut.get(row.rut);
+    const existing = currentByStudent.get(student.id);
+    if (existing) {
+      const index = nextParticipations.findIndex((participation) => participation.id === existing.id);
+      nextParticipations[index] = { ...existing, teamNumber: row.teamNumber, updatedAt: timestamp };
+      return;
+    }
+
+    nextParticipations.push({
+      id: createId("part"),
+      studentId: student.id,
+      projectId,
+      executionId: projectId,
+      teamNumber: row.teamNumber,
+      registeredBy: registeredBy || "Docente",
+      status: "ACTIVO",
+      registeredAt: timestamp,
+    });
+  });
+
+  writeCollection(STORAGE_KEYS.students, nextStudents);
+  writeCollection(STORAGE_KEYS.studentParticipations, nextParticipations);
+  return getStudentParticipationsForProject(projectId);
 }
 
 export function saveProject(project) {

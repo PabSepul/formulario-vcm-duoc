@@ -41,6 +41,7 @@ const trackedStatuses = [
   "Disponible para docentes",
   "Postulada / Tomada por docente",
   "En revisión VCM",
+  "Docente aprobado / Nómina pendiente",
   "Proyecto en ejecución",
   "Hito registrado",
   "Hito observado",

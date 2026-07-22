@@ -151,6 +151,7 @@ export function TextInput({ label, value, onChange, placeholder, required, type 
           value={value}
           readOnly={readOnly}
           onChange={(event) => onChange(event.target.value)}
+          onInput={type === "date" ? (event) => onChange(event.currentTarget.value) : undefined}
           placeholder={placeholder}
           className={`h-12 w-full rounded-lg border border-neutral-300 bg-white px-4 text-sm text-neutral-800 outline-none transition placeholder:text-neutral-400 focus:border-[#f5b400] focus:ring-2 focus:ring-[#f5b400]/30 ${icon ? "pl-10" : ""} ${readOnly ? "bg-neutral-100 font-bold" : ""}`}
         />

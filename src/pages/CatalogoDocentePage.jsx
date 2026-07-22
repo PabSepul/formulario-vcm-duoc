@@ -20,6 +20,11 @@ import {
   TextInput,
 } from "../components/VcmUI";
 import {
+  areMilestonesComplete,
+  getNextActionableMilestone,
+  submitMilestoneForReview,
+} from "../utils/projectMilestones";
+import {
   addNotification,
   addProjectEvent,
   ensureVcmData,
@@ -31,7 +36,6 @@ import {
 
 const initialApplication = {
   teacher: "",
-  students: "",
   startDate: "",
   endDate: "",
   milestonesText: "",
@@ -70,6 +74,7 @@ export default function CatalogoDocentePage() {
         "Disponible para docentes",
         "Postulada / Tomada por docente",
         "En revisión VCM",
+        "Docente aprobado / Nómina pendiente",
         "Proyecto en ejecución",
         "Hito registrado",
         "Hito observado",
@@ -101,11 +106,18 @@ export default function CatalogoDocentePage() {
   };
 
   const submitApplication = () => {
-    const required = [application.teacher, application.students, application.startDate, application.endDate, application.milestonesText].every(Boolean);
+    const required = [application.teacher, application.startDate, application.endDate, application.milestonesText].every(Boolean);
     if (!required) {
-      setMessage({ type: "error", text: "Completa docente, estudiantes, fechas e hitos antes de postular." });
+      setMessage({ type: "error", text: "Completa docente, fechas e hitos antes de postular." });
       return;
     }
+
+    const pendingApplication = {
+      ...application,
+      reviewStatus: "PENDIENTE",
+      submittedAt: new Date().toISOString(),
+      submittedBy: session?.name || application.teacher,
+    };
 
     const milestones = application.milestonesText
       .split("\n")
@@ -126,17 +138,17 @@ export default function CatalogoDocentePage() {
             {
               ...project,
               status: "En revisión VCM",
-              application,
+              application: pendingApplication,
               milestones,
             },
             "docente",
-            "Proyecto tomado por docente",
-            `${application.teacher} registró estudiantes, fechas e hitos comprometidos.`,
+            "Postulación docente registrada",
+            `${application.teacher} propuso fechas e hitos para ejecutar el proyecto. La nómina se registrará después de la aprobación.`,
           ),
-          "Validador",
-          "Un docente postuló para ejecutar el proyecto.",
+          "Validador y Director de carrera",
+          "Un docente postuló para ejecutar el proyecto y requiere aprobación.",
         ),
-      { type: "success", text: "Postulación enviada a revisión del Validador. Puedes seguirla en Mis solicitudes." },
+      { type: "success", text: "Postulación enviada a revisión del Validador o Director responsable. Puedes seguirla en Mis solicitudes." },
     );
     setApplication({ ...initialApplication, teacher: session?.name || "Docente Demo" });
   };
@@ -148,33 +160,29 @@ export default function CatalogoDocentePage() {
       return;
     }
 
-    mutate(
-      (project) => {
-        const nextMilestone = {
-          id: `hito-${Date.now()}`,
-          title: milestone.title,
-          comments: milestone.comments,
-          evidence: milestone.evidence,
-          status: "En revisión",
-          createdAt: new Date().toISOString(),
-        };
-        return addNotification(
-          addProjectEvent(
-            {
-              ...project,
-              status: "Hito registrado",
-              milestones: [nextMilestone, ...(project.milestones || [])],
-            },
-            "docente",
-            "Hito registrado",
-            `${milestone.title}: ${milestone.comments}`,
+    try {
+      mutate(
+        (project) =>
+          addNotification(
+            addProjectEvent(
+              {
+                ...project,
+                status: "Hito registrado",
+                milestones: submitMilestoneForReview(project.milestones, milestone),
+              },
+              "docente",
+              "Hito registrado",
+              `${milestone.title}: ${milestone.comments}`,
+            ),
+            "Socio formador",
+            "Hay un hito pendiente de validación.",
           ),
-          "Socio formador",
-          "Hay un hito pendiente de validación.",
-        );
-      },
-      { type: "success", text: "Hito enviado a validación del Socio formador." },
-    );
+        { type: "success", text: "Hito enviado a validación del Socio formador." },
+      );
+    } catch (error) {
+      setMessage({ type: "error", text: error.message || "No fue posible registrar el hito." });
+      return;
+    }
     setMilestone(initialMilestone);
   };
 
@@ -193,6 +201,17 @@ export default function CatalogoDocentePage() {
   };
 
   const submitClosure = () => {
+    if (!areMilestonesComplete(selectedProject?.milestones)) {
+      const nextMilestone = getNextActionableMilestone(selectedProject?.milestones);
+      setMessage({
+        type: "error",
+        text: nextMilestone
+          ? `Debes completar y obtener la aprobación del hito "${nextMilestone.title}" antes de solicitar el cierre.`
+          : "Todos los hitos deben estar aprobados antes de solicitar el cierre.",
+      });
+      return;
+    }
+
     const required = [closure.summary, closure.evidence].every(Boolean);
     if (!required) {
       setMessage({ type: "error", text: "Completa resumen y evidencias finales antes de solicitar cierre." });
@@ -221,10 +240,10 @@ export default function CatalogoDocentePage() {
       (project) =>
         addNotification(
           addProjectEvent({ ...project, status: "En revisión VCM", cancellation: { reason: cancelReason } }, "docente", "Solicitud de cancelación registrada", cancelReason),
-          "Validador",
-          "El docente solicitó cancelar el proyecto.",
+          "Validador y Director de carrera",
+          "El docente solicitó cancelar el proyecto y requiere revisión.",
         ),
-      { type: "warning", text: "Solicitud de cancelación enviada al Validador." },
+      { type: "warning", text: "Solicitud de cancelación enviada al Validador o Director responsable." },
     );
     setCancelReason("");
   };
@@ -284,12 +303,14 @@ export default function CatalogoDocentePage() {
             </Section>
 
             {selectedProject.status === "Disponible para docentes" && (
-              <Section title="Tomar proyecto y postular" subtitle="RN-06: registra estudiantes, fechas e hitos antes de enviar al Validador.">
+              <Section title="Tomar proyecto y postular" subtitle="RN-06: propone fechas e hitos. La nómina se habilita después de la aprobación.">
                 <div className="grid gap-5 md:grid-cols-2">
                   <TextInput label="Docente responsable" required value={application.teacher} onChange={(value) => setApplication((prev) => ({ ...prev, teacher: value }))} placeholder="Nombre docente" />
-                  <TextInput label="Estudiantes participantes" required type="number" value={application.students} onChange={(value) => setApplication((prev) => ({ ...prev, students: value }))} placeholder="Ej: 28" />
                   <TextInput label="Fecha de inicio" required type="date" icon={<Calendar className="h-5 w-5" />} value={application.startDate} onChange={(value) => setApplication((prev) => ({ ...prev, startDate: value }))} />
                   <TextInput label="Fecha de término" required type="date" icon={<Calendar className="h-5 w-5" />} value={application.endDate} onChange={(value) => setApplication((prev) => ({ ...prev, endDate: value }))} />
+                </div>
+                <div className="mt-5">
+                  <Notice type="info">Los RUT y equipos de alumnos se registrarán en Mis solicitudes cuando el Validador o Director apruebe tu postulación.</Notice>
                 </div>
                 <div className="mt-5">
                   <TextArea label="Hitos comprometidos" required value={application.milestonesText} onChange={(value) => setApplication((prev) => ({ ...prev, milestonesText: value }))} placeholder={"Un hito por línea.\nEj: Diagnóstico inicial\nPrototipo validado\nEntrega final"} />
@@ -301,14 +322,17 @@ export default function CatalogoDocentePage() {
             )}
 
             {selectedProject.status === "En revisión VCM" && (
-              <Section title="Postulación en revisión" subtitle="El Validador debe aprobar la ejecución o devolver la solicitud.">
-                <Notice type="info">La postulación fue enviada correctamente y queda pendiente de revisión del Validador.</Notice>
+              <Section title="Postulación en revisión" subtitle="El Validador o Director responsable debe aprobar la ejecución o devolver la solicitud.">
+                <Notice type="info">La postulación fue enviada correctamente y queda pendiente de revisión del Validador o Director responsable.</Notice>
               </Section>
             )}
 
             {selectedProject.status === "Proyecto en ejecución" && (
               <Section title="Registrar hito o solicitar cierre" subtitle="Cada hito requiere evidencia mínima antes de validación del Socio formador.">
                 <div className="space-y-5">
+                  {getNextActionableMilestone(selectedProject.milestones) && (
+                    <Notice type="info">Próximo hito comprometido: {getNextActionableMilestone(selectedProject.milestones).title}</Notice>
+                  )}
                   <TextInput label="Título del hito" required value={milestone.title} onChange={(value) => setMilestone((prev) => ({ ...prev, title: value }))} placeholder="Ej: Diagnóstico inicial" />
                   <TextArea label="Comentarios de avance" required value={milestone.comments} onChange={(value) => setMilestone((prev) => ({ ...prev, comments: value }))} placeholder="Reuniones, avance, acuerdos o antecedentes relevantes." />
                   <TextArea label="Evidencias" required value={milestone.evidence} onChange={(value) => setMilestone((prev) => ({ ...prev, evidence: value }))} placeholder="Archivos, enlaces, actas, fotografías o documentos." />
@@ -320,6 +344,9 @@ export default function CatalogoDocentePage() {
                 <div className="mt-6 grid gap-5 md:grid-cols-2">
                   <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
                     <p className="mb-3 text-sm font-black text-neutral-950">Solicitar cierre</p>
+                    {!areMilestonesComplete(selectedProject.milestones) && (
+                      <Notice type="warning">El cierre se habilita cuando todos los hitos comprometidos estén aprobados.</Notice>
+                    )}
                     <TextArea label="Resumen final" value={closure.summary} onChange={(value) => setClosure((prev) => ({ ...prev, summary: value }))} placeholder="Resultado final del proyecto." rows={3} />
                     <div className="mt-3">
                       <TextArea label="Evidencias finales" value={closure.evidence} onChange={(value) => setClosure((prev) => ({ ...prev, evidence: value }))} placeholder="Respaldos finales." rows={3} />

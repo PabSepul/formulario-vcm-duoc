@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
+  ClipboardCheck,
   Download,
   Filter,
   GraduationCap,
@@ -20,7 +22,9 @@ import {
   ensureVcmData,
   escuelas,
   getProjects,
+  getProjectsForSession,
   getSession,
+  getStudentParticipationsForProject,
   modalidades,
   projectStatuses,
   sedes,
@@ -41,6 +45,7 @@ function getProjectPhase(project) {
     [
       "Postulada / Tomada por docente",
       "En revisión VCM",
+      "Docente aprobado / Nómina pendiente",
       "Proyecto en ejecución",
       "Hito registrado",
       "Hito observado",
@@ -56,11 +61,25 @@ function getProjectPhase(project) {
 
 function formatDate(value) {
   if (!value) return "Pendiente";
+  const dateOnlyMatch = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnlyMatch) {
+    const [, year, month, day] = dateOnlyMatch;
+    return new Date(Number(year), Number(month) - 1, Number(day)).toLocaleDateString("es-CL");
+  }
   return new Date(value).toLocaleDateString("es-CL");
 }
 
 function getTeacher(project) {
   return project.application?.teacher || "Sin docente";
+}
+
+function getStudentSummary(project) {
+  const participants = getStudentParticipationsForProject(project.id);
+  return {
+    count: participants.length || Number(project.application?.students || 0),
+    hasRoster: participants.length > 0,
+    participants,
+  };
 }
 
 export default function DirectorProyectosPage() {
@@ -84,7 +103,7 @@ export default function DirectorProyectosPage() {
 
   const scopedProjects = useMemo(() => {
     if (session?.role === "admin") return projects;
-    return projects.filter((project) => normalize(project.assignment?.school) === normalize(session?.school));
+    return getProjectsForSession(projects, session);
   }, [projects, session]);
 
   const teacherOptions = useMemo(() => {
@@ -108,6 +127,7 @@ export default function DirectorProyectosPage() {
         assignment.subject,
         assignment.campus,
         project.application?.teacher,
+        ...getStudentParticipationsForProject(project.id).map((participant) => participant.rut),
         project.status,
       ];
 
@@ -145,14 +165,23 @@ export default function DirectorProyectosPage() {
         title="Proyectos de escuela"
         description={`Seguimiento académico de proyectos VCM asociados a ${selectedSchool}.`}
         actions={
-          <a
-            href={excelHref}
-            download={excelFileName}
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-[#f5b400] px-5 text-sm font-extrabold text-neutral-950 shadow-sm transition hover:bg-[#d99d00]"
-          >
-            <Download className="h-5 w-5" />
-            Descargar Excel
-          </a>
+          <>
+            <Link
+              to="/dashboard"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-neutral-300 bg-white px-5 text-sm font-extrabold text-neutral-950 transition hover:bg-neutral-100"
+            >
+              <ClipboardCheck className="h-5 w-5" />
+              Gestionar proyectos
+            </Link>
+            <a
+              href={excelHref}
+              download={excelFileName}
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-[#f5b400] px-5 text-sm font-extrabold text-neutral-950 shadow-sm transition hover:bg-[#d99d00]"
+            >
+              <Download className="h-5 w-5" />
+              Descargar Excel
+            </a>
+          </>
         }
       />
 
@@ -184,7 +213,7 @@ export default function DirectorProyectosPage() {
             <EmptyState title="Sin proyectos" description="No hay proyectos que coincidan con los filtros seleccionados." />
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-[1180px] w-full border-separate border-spacing-0 text-left text-sm">
+              <table className="min-w-[1380px] w-full border-separate border-spacing-0 text-left text-sm">
                 <thead>
                   <tr className="text-xs uppercase tracking-wide text-neutral-500">
                     <HeaderCell>Proyecto</HeaderCell>
@@ -193,7 +222,9 @@ export default function DirectorProyectosPage() {
                     <HeaderCell>Socio formador</HeaderCell>
                     <HeaderCell>Carrera / sede</HeaderCell>
                     <HeaderCell>Docente</HeaderCell>
+                    <HeaderCell>Alumnos</HeaderCell>
                     <HeaderCell>Fechas</HeaderCell>
+                    <HeaderCell>Acción</HeaderCell>
                   </tr>
                 </thead>
                 <tbody>
@@ -214,8 +245,23 @@ export default function DirectorProyectosPage() {
                       </BodyCell>
                       <BodyCell>{getTeacher(project)}</BodyCell>
                       <BodyCell>
+                        <p className="font-black text-neutral-950">{getStudentSummary(project).count || "Pendiente"}</p>
+                        <p className="mt-1 text-xs text-neutral-500">
+                          {getStudentSummary(project).hasRoster ? "RUT registrados" : getStudentSummary(project).count ? "Solo cantidad" : "Sin nómina"}
+                        </p>
+                      </BodyCell>
+                      <BodyCell>
                         <p>{formatDate(project.application?.startDate)}</p>
                         <p className="mt-1 text-xs text-neutral-500">{formatDate(project.application?.endDate)}</p>
+                      </BodyCell>
+                      <BodyCell>
+                        <Link
+                          to={`/dashboard?proyecto=${project.id}`}
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 text-xs font-extrabold text-neutral-950 transition hover:border-[#f5b400] hover:bg-[#fff8df]"
+                        >
+                          <ClipboardCheck className="h-4 w-4" />
+                          Gestionar
+                        </Link>
                       </BodyCell>
                     </tr>
                   ))}
@@ -240,6 +286,7 @@ function BodyCell({ children }) {
 function buildExportRows(projects) {
   return projects.map((project) => {
     const phase = getProjectPhase(project);
+    const studentSummary = getStudentSummary(project);
     return {
     "ID": project.id,
     "Proyecto": project.title,
@@ -253,7 +300,7 @@ function buildExportRows(projects) {
     "Seccion": project.assignment?.section || "",
     "Semestre": project.assignment?.semester || "",
     "Docente": project.application?.teacher || "",
-    "Estudiantes": project.application?.students || "",
+    "Estudiantes": studentSummary.count || "",
     "Fecha inicio": project.application?.startDate || "",
     "Fecha termino": project.application?.endDate || "",
     "Modalidad": project.execution?.modality || "",
@@ -267,6 +314,41 @@ function buildExportRows(projects) {
     "Lectura rapida": getPhaseRecommendation(phase),
   };
   });
+}
+
+function buildStudentExportRows(projects) {
+  const participations = projects.flatMap((project) =>
+    getStudentParticipationsForProject(project.id).map((participant) => ({ project, participant })),
+  );
+  const projectCountByRut = participations.reduce((counts, { participant }) => {
+    counts.set(participant.rut, (counts.get(participant.rut) || 0) + 1);
+    return counts;
+  }, new Map());
+
+  return participations.map(({ project, participant }) => ({
+    "Proyecto": project.title,
+    "ID proyecto": project.id,
+    "RUT alumno": participant.rut,
+    "Equipo": participant.teamNumber || "",
+    "Proyectos del alumno": projectCountByRut.get(participant.rut) || 1,
+    "Origen": participant.isDemo ? "Dato de prueba" : "Registro de usuario",
+    "Estado participacion": participant.status || "ACTIVO",
+    "Estado proyecto": project.status,
+    "Etapa": getProjectPhase(project),
+    "Socio formador": project.entityName || "",
+    "Escuela": project.assignment?.school || "",
+    "Carrera": project.assignment?.career || "",
+    "Sede academica": project.assignment?.campus || "",
+    "Asignatura": project.assignment?.subject || "",
+    "Seccion": project.assignment?.section || "",
+    "Semestre": project.assignment?.semester || "",
+    "Docente": project.application?.teacher || "",
+    "Modalidad": project.execution?.modality || "",
+    "Fecha inicio": project.application?.startDate || "",
+    "Fecha termino": project.application?.endDate || "",
+    "Registrado por": participant.registeredBy || "",
+    "Fecha registro": participant.registeredAt || "",
+  }));
 }
 
 function escapeXml(value) {
@@ -319,7 +401,8 @@ function buildWorkbookFiles(projects, school, filters) {
     "xl/styles.xml": stylesXml(),
     "xl/worksheets/sheet1.xml": summarySheetXml(projects, school, filters),
     "xl/worksheets/sheet2.xml": projectsSheetXml(projects, school),
-    "xl/worksheets/sheet3.xml": dictionarySheetXml(),
+    "xl/worksheets/sheet3.xml": studentsSheetXml(projects, school),
+    "xl/worksheets/sheet4.xml": dictionarySheetXml(),
   };
 }
 
@@ -333,6 +416,7 @@ function contentTypesXml() {
   <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
   <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
   <Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/worksheets/sheet4.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
 </Types>`;
 }
 
@@ -349,7 +433,8 @@ function workbookXml() {
   <sheets>
     <sheet name="Resumen" sheetId="1" r:id="rId1"/>
     <sheet name="Proyectos" sheetId="2" r:id="rId2"/>
-    <sheet name="Diccionario" sheetId="3" r:id="rId3"/>
+    <sheet name="Alumnos por proyecto" sheetId="3" r:id="rId3"/>
+    <sheet name="Diccionario" sheetId="4" r:id="rId4"/>
   </sheets>
 </workbook>`;
 }
@@ -360,7 +445,8 @@ function workbookRelsXml() {
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
   <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
   <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>
-  <Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+  <Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet4.xml"/>
+  <Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 </Relationships>`;
 }
 
@@ -451,6 +537,62 @@ function projectsSheetXml(projects, school) {
   const lastRow = Math.max(headerRowIndex + rows.length, headerRowIndex + 1);
   return worksheetXml({
     cols: [16, 34, 24, 28, 18, 28, 24, 18, 24, 12, 12, 24, 12, 14, 14, 14, 16, 10, 16, 22, 40, 42, 42, 48],
+    rows: sheetRows,
+    mergeCells: [`A1:${lastColumn}1`, `A2:${lastColumn}2`],
+    autoFilter: `A${headerRowIndex}:${lastColumn}${lastRow}`,
+    freezePane: true,
+  });
+}
+
+function studentsSheetXml(projects, school) {
+  const rows = buildStudentExportRows(projects);
+  const fallbackRow = {
+    "Proyecto": "Sin participaciones con RUT para los filtros seleccionados",
+    "ID proyecto": "",
+    "RUT alumno": "",
+    "Equipo": "",
+    "Proyectos del alumno": "",
+    "Origen": "",
+    "Estado participacion": "",
+    "Estado proyecto": "",
+    "Etapa": "",
+    "Socio formador": "",
+    "Escuela": "",
+    "Carrera": "",
+    "Sede academica": "",
+    "Asignatura": "",
+    "Seccion": "",
+    "Semestre": "",
+    "Docente": "",
+    "Modalidad": "",
+    "Fecha inicio": "",
+    "Fecha termino": "",
+    "Registrado por": "",
+    "Fecha registro": "",
+  };
+  const headers = Object.keys(rows[0] || fallbackRow);
+  const exportedRows = rows.length ? rows : [fallbackRow];
+  const headerRowIndex = 4;
+  const uniqueStudents = new Set(rows.map((item) => item["RUT alumno"])).size;
+  const sheetRows = [
+    row(1, [cell("A1", `Trazabilidad de alumnos - ${school}`, 1)]),
+    row(2, [cell("A2", `${rows.length} participación(es) · ${uniqueStudents} alumno(s) único(s) · una fila por alumno y proyecto`, 12)]),
+    row(headerRowIndex, headers.map((header, index) => cell(`${columnName(index + 1)}${headerRowIndex}`, header, 2))),
+    ...exportedRows.map((item, rowIndex) => {
+      const excelRow = headerRowIndex + rowIndex + 1;
+      return row(excelRow, headers.map((header, colIndex) => {
+        const reference = `${columnName(colIndex + 1)}${excelRow}`;
+        if (["Equipo", "Proyectos del alumno"].includes(header) && item[header] !== "") {
+          return numberCell(reference, item[header], 10);
+        }
+        return cell(reference, item[header], header === "Etapa" ? phaseStyle(item[header]) : 10);
+      }));
+    }),
+  ];
+  const lastColumn = columnName(headers.length);
+  const lastRow = headerRowIndex + exportedRows.length;
+  return worksheetXml({
+    cols: [36, 18, 18, 10, 18, 18, 20, 30, 16, 24, 28, 26, 18, 26, 12, 12, 24, 16, 14, 14, 20, 24],
     rows: sheetRows,
     mergeCells: [`A1:${lastColumn}1`, `A2:${lastColumn}2`],
     autoFilter: `A${headerRowIndex}:${lastColumn}${lastRow}`,

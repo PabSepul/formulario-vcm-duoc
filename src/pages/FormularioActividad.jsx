@@ -295,7 +295,8 @@ export default function FormularioActividad() {
                 <>
                   <li>El envío genera notificación al Validador.</li>
                   <li>El Validador decide si la propuesta se acepta, se corrige o se rechaza.</li>
-                  <li>Si se acepta, el Validador puede asignarla a escuela, carrera, sede y asignatura.</li>
+                  <li>Si se acepta, el Validador la asigna al ámbito académico correspondiente.</li>
+                  <li>El Director responsable puede continuar la asignación y gestión dentro de su Escuela y Carrera.</li>
                 </>
               ) : (
                 <>
